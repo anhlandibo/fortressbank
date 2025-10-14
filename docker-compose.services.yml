@@ -1,0 +1,23 @@
+version: '3.9'
+
+services:
+  # === USER SERVICE ===
+  user-service:
+    build: .
+    container_name: user-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://user-service-db:5432/userdb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: 123456
+      SPRING_PROFILES_ACTIVE: docker
+      SERVER_PORT: 4000
+    depends_on:
+      - user-service-db
+    ports:
+      - "4000:4000"
+    networks:
+      - internal
+
+networks:
+  internal:
+    external: true

@@ -1,0 +1,17 @@
+package com.uit.userservice.entity;
+
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
+import java.io.Serializable;
+
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class UserRoleMappingId implements Serializable {
+    private Integer userId;
+    private Integer roleId;
+}
