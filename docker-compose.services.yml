@@ -43,6 +43,19 @@ services:
     networks:
       - internal
 
+  # === NOTIFICATION SERVICE ===
+  notification-service:
+    build:
+      context: ./notification-service
+    container_name: notification-service
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SERVER_PORT: 4002
+    ports:
+      - "4002:4002"
+    networks:
+      - internal
+
 networks:
   internal:
     external: true
