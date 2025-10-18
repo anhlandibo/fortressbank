@@ -1,6 +1,8 @@
 package com.uit.accountservice.service;
 
 import com.uit.accountservice.dto.AccountDto;
+import com.uit.accountservice.dto.PendingTransfer;
+import com.uit.accountservice.dto.request.SendSmsOtpRequest;
 import com.uit.accountservice.dto.request.TransferRequest;
 import com.uit.accountservice.dto.request.VerifyTransferRequest;
 import com.uit.accountservice.dto.response.ChallengeResponse;
@@ -16,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.List;
 import java.util.UUID;
@@ -30,6 +33,7 @@ public class AccountService {
     private final AccountMapper accountMapper;
     private final RiskEngineService riskEngineService;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final WebClient.Builder webClientBuilder;
 
     public List<AccountDto> getAccountsByUserId(String userId) {
         return accountRepository.findByUserId(userId)
@@ -61,12 +65,17 @@ public class AccountService {
             String challengeId = UUID.randomUUID().toString();
             String otpCode = String.valueOf(100000 + (int) (Math.random() * 900000));
 
-            // TODO: Send real SMS
-            TransferRequest pendingTransfer = new TransferRequest();
-            pendingTransfer.setFromAccountId(transferRequest.getFromAccountId());
-            pendingTransfer.setToAccountId(transferRequest.getToAccountId());
-            pendingTransfer.setAmount(transferRequest.getAmount());
+            // Send OTP via notification-service
+            webClientBuilder.build()
+                    .post()
+                    .uri("http://notification-service:4002/notifications/sms/send-otp")
+                    .bodyValue(new SendSmsOtpRequest(sourceAccount.getUserId(), otpCode))
+                    .retrieve()
+                    .bodyToMono(Void.class)
+                    .subscribe();
+
             // Store pending transfer in Redis
+            PendingTransfer pendingTransfer = new PendingTransfer(transferRequest, otpCode);
             redisTemplate.opsForValue().set("transfer:" + challengeId, pendingTransfer, 5, TimeUnit.MINUTES);
 
             return new ChallengeResponse("CHALLENGE_REQUIRED", challengeId, riskAssessment.getChallengeType());
@@ -79,16 +88,18 @@ public class AccountService {
     @Transactional
     public AccountDto verifyTransfer(VerifyTransferRequest verifyTransferRequest) {
         // Retrieve pending transfer from Redis
-        TransferRequest pendingTransfer = (TransferRequest) redisTemplate.opsForValue().get("transfer:" + verifyTransferRequest.getChallengeId());
+        PendingTransfer pendingTransfer = (PendingTransfer) redisTemplate.opsForValue().get("transfer:" + verifyTransferRequest.getChallengeId());
 
         if (pendingTransfer == null) {
             throw new AppException(ErrorCode.NOT_FOUND_EXCEPTION, "Challenge not found or has expired.");
         }
 
-        // TODO: Implement OTP check
+        if (!pendingTransfer.getOtpCode().equals(verifyTransferRequest.getOtpCode())) {
+            throw new AppException(ErrorCode.INVALID_OTP, "Invalid OTP code.");
+        }
 
         // Execute the transfer
-        AccountDto accountDto = createTransfer(pendingTransfer);
+        AccountDto accountDto = createTransfer(pendingTransfer.getTransferRequest());
 
         // Delete the used challenge from Redis
         redisTemplate.delete("transfer:" + verifyTransferRequest.getChallengeId());
