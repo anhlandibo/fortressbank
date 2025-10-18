@@ -2,6 +2,7 @@ package com.uit.accountservice.controller;
 
 import com.uit.accountservice.dto.AccountDto;
 import com.uit.accountservice.dto.request.TransferRequest;
+import com.uit.accountservice.dto.request.VerifyTransferRequest;
 import com.uit.accountservice.service.AccountService;
 import com.uit.sharedkernel.api.ApiResponse;
 import lombok.RequiredArgsConstructor;
@@ -39,8 +40,7 @@ public class AccountController {
     }
 
     @PostMapping("/verify-transfer")
-    public ResponseEntity<ApiResponse> verifyTransfer() {
-        // TODO: Implement this method
-        return ResponseEntity.ok(ApiResponse.success("Verify Transfer"));
+    public ResponseEntity<ApiResponse> verifyTransfer(@RequestBody VerifyTransferRequest verifyTransferRequest) {
+        return ResponseEntity.ok(ApiResponse.success(accountService.verifyTransfer(verifyTransferRequest)));
     }
 }

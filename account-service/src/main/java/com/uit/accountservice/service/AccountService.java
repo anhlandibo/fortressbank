@@ -2,6 +2,7 @@ package com.uit.accountservice.service;
 
 import com.uit.accountservice.dto.AccountDto;
 import com.uit.accountservice.dto.request.TransferRequest;
+import com.uit.accountservice.dto.request.VerifyTransferRequest;
 import com.uit.accountservice.dto.response.ChallengeResponse;
 import com.uit.accountservice.entity.Account;
 import com.uit.accountservice.mapper.AccountMapper;
@@ -61,15 +62,38 @@ public class AccountService {
             String otpCode = String.valueOf(100000 + (int) (Math.random() * 900000));
 
             // TODO: Send real SMS
-
+            TransferRequest pendingTransfer = new TransferRequest();
+            pendingTransfer.setFromAccountId(transferRequest.getFromAccountId());
+            pendingTransfer.setToAccountId(transferRequest.getToAccountId());
+            pendingTransfer.setAmount(transferRequest.getAmount());
             // Store pending transfer in Redis
-            redisTemplate.opsForValue().set("transfer:" + challengeId, transferRequest, 5, TimeUnit.MINUTES);
+            redisTemplate.opsForValue().set("transfer:" + challengeId, pendingTransfer, 5, TimeUnit.MINUTES);
 
             return new ChallengeResponse("CHALLENGE_REQUIRED", challengeId, riskAssessment.getChallengeType());
         } else {
             // Execute transfer immediately
             return createTransfer(transferRequest);
         }
+    }
+
+    @Transactional
+    public AccountDto verifyTransfer(VerifyTransferRequest verifyTransferRequest) {
+        // Retrieve pending transfer from Redis
+        TransferRequest pendingTransfer = (TransferRequest) redisTemplate.opsForValue().get("transfer:" + verifyTransferRequest.getChallengeId());
+
+        if (pendingTransfer == null) {
+            throw new AppException(ErrorCode.NOT_FOUND_EXCEPTION, "Challenge not found or has expired.");
+        }
+
+        // TODO: Implement OTP check
+
+        // Execute the transfer
+        AccountDto accountDto = createTransfer(pendingTransfer);
+
+        // Delete the used challenge from Redis
+        redisTemplate.delete("transfer:" + verifyTransferRequest.getChallengeId());
+
+        return accountDto;
     }
 
     private AccountDto createTransfer(TransferRequest transferRequest) {
