@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,14 +20,19 @@ public class UserController {
     private final UserService userService;
 
     @PostMapping
-    public ResponseEntity<ApiResponse<UserResponse>> createUser(@Valid @RequestBody CreateUserRequest request) {
+    public ResponseEntity<ApiResponse<UserResponse>> createUser(@Valid @RequestBody CreateUserRequest request, JwtAuthenticationToken token) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success(userService.createUser(request)));
+                .body(ApiResponse.success(userService.createUser(request, token)));
     }
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<UserResponse>>> getAllUsers() {
         return ResponseEntity.status(HttpStatus.OK)
                 .body(ApiResponse.success(userService.getAllUsers()));
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse<UserResponse>> getCurrentUser(JwtAuthenticationToken token) {
+        return ResponseEntity.ok(ApiResponse.success(userService.getUserByToken(token)));
     }
 }
