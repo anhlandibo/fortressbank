@@ -12,6 +12,7 @@
     <modules>
         <module>shared-kernel</module>
         <module>user-service</module>
+        <module>account-service</module>
     </modules>
 
     <properties>
