@@ -1,6 +1,7 @@
 package com.uit.accountservice.controller;
 
 import com.uit.accountservice.dto.AccountDto;
+import com.uit.accountservice.dto.request.TransferRequest;
 import com.uit.accountservice.service.AccountService;
 import com.uit.sharedkernel.api.ApiResponse;
 import lombok.RequiredArgsConstructor;
@@ -33,9 +34,8 @@ public class AccountController {
     }
 
     @PostMapping("/transfers")
-    public ResponseEntity<ApiResponse> handleTransfer() {
-        // TODO: Implement this method
-        return ResponseEntity.ok(ApiResponse.success("Handle Transfer"));
+    public ResponseEntity<ApiResponse> handleTransfer(@RequestBody TransferRequest transferRequest, @RequestHeader("X-User-Id") String userId) {
+        return ResponseEntity.ok(ApiResponse.success(accountService.handleTransfer(transferRequest, userId)));
     }
 
     @PostMapping("/verify-transfer")
