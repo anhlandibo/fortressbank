@@ -1,12 +1,20 @@
 package com.uit.accountservice.controller;
 
+import com.uit.accountservice.dto.AccountDto;
+import com.uit.accountservice.service.AccountService;
 import com.uit.sharedkernel.api.ApiResponse;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/accounts")
+@RequiredArgsConstructor
 public class AccountController {
+
+    private final AccountService accountService;
 
     @GetMapping("/")
     public ResponseEntity<ApiResponse> getRoot() {
@@ -20,9 +28,8 @@ public class AccountController {
     }
 
     @GetMapping("/my-accounts")
-    public ResponseEntity<ApiResponse> getUserAccounts() {
-        // TODO: Implement this method
-        return ResponseEntity.ok(ApiResponse.success("User Accounts"));
+    public ResponseEntity<ApiResponse<List<AccountDto>>> getUserAccounts(@RequestHeader("X-User-Id") String userId) {
+        return ResponseEntity.ok(ApiResponse.success(accountService.getAccountsByUserId(userId)));
     }
 
     @PostMapping("/transfers")
