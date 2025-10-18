@@ -7,6 +7,7 @@ import com.uit.accountservice.service.AccountService;
 import com.uit.sharedkernel.api.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -30,12 +31,14 @@ public class AccountController {
     }
 
     @GetMapping("/my-accounts")
-    public ResponseEntity<ApiResponse<List<AccountDto>>> getUserAccounts(@RequestHeader("X-User-Id") String userId) {
+    public ResponseEntity<ApiResponse<List<AccountDto>>> getUserAccounts(JwtAuthenticationToken token) {
+        String userId = token.getToken().getSubject();
         return ResponseEntity.ok(ApiResponse.success(accountService.getAccountsByUserId(userId)));
     }
 
     @PostMapping("/transfers")
-    public ResponseEntity<ApiResponse> handleTransfer(@RequestBody TransferRequest transferRequest, @RequestHeader("X-User-Id") String userId) {
+    public ResponseEntity<ApiResponse> handleTransfer(@RequestBody TransferRequest transferRequest, JwtAuthenticationToken token) {
+        String userId = token.getToken().getSubject();
         return ResponseEntity.ok(ApiResponse.success(accountService.handleTransfer(transferRequest, userId)));
     }
 
