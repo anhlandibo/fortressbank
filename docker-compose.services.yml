@@ -3,7 +3,8 @@ version: '3.9'
 services:
   # === USER SERVICE ===
   user-service:
-    build: .
+    build:
+      context: ./user-service
     container_name: user-service
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://user-service-db:5432/userdb
@@ -12,9 +13,33 @@ services:
       SPRING_PROFILES_ACTIVE: docker
       SERVER_PORT: 4000
     depends_on:
-      - user-service-db
+      user-service-db:
+        condition: service_started
+      keycloak:
+        condition: service_started
     ports:
       - "4000:4000"
+    networks:
+      - internal
+
+  # === ACCOUNT SERVICE ===
+  account-service:
+    build:
+      context: ./account-service
+    container_name: account-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://user-service-db:5432/userdb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: 123456
+      SPRING_PROFILES_ACTIVE: docker
+      SERVER_PORT: 4001
+      SPRING_REDIS_HOST: redis
+    depends_on:
+      - user-service-db
+      - keycloak
+      - redis
+    ports:
+      - "4001:4001"
     networks:
       - internal
 

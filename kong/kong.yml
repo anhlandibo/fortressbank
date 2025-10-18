@@ -1,0 +1,27 @@
+_format_version: "3.0"
+
+services:
+- name: backend
+  url: http://securebank-backend:5000
+  routes:
+  - name: backend-route
+    paths:
+    - /accounts
+    - /auth
+    strip_path: true
+
+plugins:
+- name: openid-connect
+  service: backend
+  config:
+    # Required fields, matching the documentation
+    client_id: "kong"
+    client_secret: "XLODsjH5G3f9iqGftbrkdHeNw3NVfNdZ"
+    discovery: "http://keycloak:8080/realms/securebank/.well-known/openid-configuration"
+    
+    # Session handling, required for this flow
+    session_secret: "nk7b1GLYLE8XuDXVen2ENvpJo1BrkNGC"
+    
+    # Optional but good practice
+    scope: "openid profile email"
+    ssl_verify: false

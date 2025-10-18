@@ -15,6 +15,76 @@ services:
     networks:
       - internal
 
+  redis:
+    image: redis:6
+    container_name: securebank-redis
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - internal
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:20.0
+    container_name: securebank-keycloak
+    command: ["start-dev", "--health-enabled=true"]
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL_HOST: user-service-db
+      KC_DB_URL_DATABASE: userdb
+      KC_DB_USERNAME: postgres
+      KC_DB_PASSWORD: 123456
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: 8888
+      KC_PROXY: edge
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_BACKCHANNEL: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+    ports:
+      - "8888:8080"
+    depends_on:
+      user-service-db:
+        condition: service_started
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+    networks:
+      - internal
+
+  kong:
+    container_name: securebank-kong
+    build:
+      context: ./kong
+    environment:
+      KONG_DATABASE: "off"
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_PROXY_LISTEN: "0.0.0.0:8000"
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+      KONG_PLUGINS: "bundled,openid-connect"
+      KONG_DECLARATIVE_CONFIG: /usr/local/kong/declarative/kong.yml
+      LUA_PATH: "/usr/local/share/lua/5.1/?.lua;/usr/local/share/lua/5.1/?/init.lua;;"
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+    depends_on:
+      keycloak:
+        condition: service_started
+    networks:
+      - internal
+
+volumes:
+  userdb_data:
+  postgres_data:
+  redis_data:
+  keycloak_data:
+
 networks:
   internal:
     external: true
+  securebank-network:
+    name: securebank-network
