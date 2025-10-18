@@ -1,27 +1,39 @@
 _format_version: "3.0"
 
 services:
-- name: backend
-  url: http://securebank-backend:5000
+- name: user-service
+  url: http://user-service:4000
   routes:
-  - name: backend-route
+  - name: user-service-route
+    paths:
+    - /users
+    strip_path: true
+
+- name: account-service
+  url: http://account-service:4001
+  routes:
+  - name: account-service-route
     paths:
     - /accounts
-    - /auth
     strip_path: true
 
 plugins:
 - name: openid-connect
-  service: backend
+  service: user-service
   config:
-    # Required fields, matching the documentation
     client_id: "kong"
     client_secret: "XLODsjH5G3f9iqGftbrkdHeNw3NVfNdZ"
-    discovery: "http://keycloak:8080/realms/securebank/.well-known/openid-configuration"
-    
-    # Session handling, required for this flow
+    discovery: "http://keycloak:8080/realms/securebank-realm/.well-known/openid-configuration"
     session_secret: "nk7b1GLYLE8XuDXVen2ENvpJo1BrkNGC"
-    
-    # Optional but good practice
+    scope: "openid profile email"
+    ssl_verify: false
+
+- name: openid-connect
+  service: account-service
+  config:
+    client_id: "kong"
+    client_secret: "XLODsjH_G3f9iqGftbrkdHeNw3NVfNdZ"
+    discovery: "http://keycloak:8080/realms/securebank-realm/.well-known/openid-configuration"
+    session_secret: "nk7b1GLYLE8XuDXVen2ENvpJo1BrkNGC"
     scope: "openid profile email"
     ssl_verify: false
