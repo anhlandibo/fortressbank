@@ -49,7 +49,7 @@ public class AccountService {
                 .orElseThrow(() -> new AppException(ErrorCode.NOT_FOUND_EXCEPTION));
 
         if (!sourceAccount.getUserId().equals(userId)) {
-            throw new AppException(ErrorCode.FORBIDDEN, "You can only transfer from your own accounts.");
+            throw new AppException(ErrorCode.FORBIDDEN);
         }
 
         if (sourceAccount.getBalance().compareTo(transferRequest.getAmount()) < 0) {
@@ -91,11 +91,11 @@ public class AccountService {
         PendingTransfer pendingTransfer = (PendingTransfer) redisTemplate.opsForValue().get("transfer:" + verifyTransferRequest.getChallengeId());
 
         if (pendingTransfer == null) {
-            throw new AppException(ErrorCode.NOT_FOUND_EXCEPTION, "Challenge not found or has expired.");
+            throw new AppException(ErrorCode.NOT_FOUND_EXCEPTION);
         }
 
         if (!pendingTransfer.getOtpCode().equals(verifyTransferRequest.getOtpCode())) {
-            throw new AppException(ErrorCode.INVALID_OTP, "Invalid OTP code.");
+            throw new AppException(ErrorCode.INVALID_OTP);
         }
 
         // Execute the transfer

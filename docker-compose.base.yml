@@ -1,8 +1,7 @@
-version: '3.9'
-
 networks:
   internal:
     driver: bridge
 
 volumes:
   userdb_data:
+  redis_data:

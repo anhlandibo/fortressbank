@@ -1,5 +1,7 @@
 package com.uit.accountservice.riskengine;
 
+import com.uit.accountservice.riskengine.dto.RiskAssessmentRequest;
+import com.uit.accountservice.riskengine.dto.RiskAssessmentResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;

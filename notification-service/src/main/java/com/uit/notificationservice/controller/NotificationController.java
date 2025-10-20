@@ -1,5 +1,6 @@
 package com.uit.notificationservice.controller;
 
+import com.uit.notificationservice.dto.SendSmsOtpRequest;
 import com.uit.notificationservice.service.NotificationService;
 import com.uit.sharedkernel.api.ApiResponse;
 import lombok.RequiredArgsConstructor;

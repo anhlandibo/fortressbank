@@ -14,7 +14,7 @@ import lombok.*;
 public class UserRoleMapping {
     @Id
     @Column(name = "user_id")
-    private Integer userId;
+    private String userId;
 
     @Id
     @Column(name = "role_id")
