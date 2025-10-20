@@ -1,10 +1,11 @@
-version: '3.9'
-
 services:
-  # === USER SERVICE ===
   user-service:
     build:
-      context: ./user-service
+      context: .
+      dockerfile: Dockerfile.services
+      target: user-service
+      args:
+        - MAVEN_OPTS=-Xmx512m
     container_name: user-service
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://user-service-db:5432/userdb
@@ -14,7 +15,7 @@ services:
       SERVER_PORT: 4000
     depends_on:
       user-service-db:
-        condition: service_started
+        condition: service_healthy
       keycloak:
         condition: service_started
     ports:
@@ -22,10 +23,13 @@ services:
     networks:
       - internal
 
-  # === ACCOUNT SERVICE ===
   account-service:
     build:
-      context: ./account-service
+      context: .
+      dockerfile: Dockerfile.services
+      target: account-service
+      args:
+        - MAVEN_OPTS=-Xmx512m
     container_name: account-service
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://user-service-db:5432/userdb
@@ -35,22 +39,31 @@ services:
       SERVER_PORT: 4001
       SPRING_REDIS_HOST: redis
     depends_on:
-      - user-service-db
-      - keycloak
-      - redis
+      user-service-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
     ports:
       - "4001:4001"
     networks:
       - internal
 
-  # === NOTIFICATION SERVICE ===
   notification-service:
     build:
-      context: ./notification-service
+      context: .
+      dockerfile: Dockerfile.services
+      target: notification-service
+      args:
+        - MAVEN_OPTS=-Xmx512m
     container_name: notification-service
     environment:
       SPRING_PROFILES_ACTIVE: docker
       SERVER_PORT: 4002
+    depends_on:
+      - user-service
+      - account-service
     ports:
       - "4002:4002"
     networks:
