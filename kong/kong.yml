@@ -23,7 +23,7 @@ plugins:
   config:
     client_id: "kong"
     client_secret: "XLODsjH5G3f9iqGftbrkdHeNw3NVfNdZ"
-    discovery: "http://keycloak:8080/realms/securebank-realm/.well-known/openid-configuration"
+    discovery: "http://keycloak:8080/realms/fortressbank-realm/.well-known/openid-configuration"
     session_secret: "nk7b1GLYLE8XuDXVen2ENvpJo1BrkNGC"
     scope: "openid profile email"
     ssl_verify: false
@@ -32,8 +32,8 @@ plugins:
   service: account-service
   config:
     client_id: "kong"
-    client_secret: "XLODsjH_G3f9iqGftbrkdHeNw3NVfNdZ"
-    discovery: "http://keycloak:8080/realms/securebank-realm/.well-known/openid-configuration"
+    client_secret: "XLODsjH5G3f9iqGftbrkdHeNw3NVfNdZ"
+    discovery: "http://keycloak:8080/realms/fortressbank-realm/.well-known/openid-configuration"
     session_secret: "nk7b1GLYLE8XuDXVen2ENvpJo1BrkNGC"
     scope: "openid profile email"
     ssl_verify: false

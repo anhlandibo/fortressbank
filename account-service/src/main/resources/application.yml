@@ -7,4 +7,4 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:8888/realms/securebank-realm
+          issuer-uri: http://localhost:8888/realms/fortressbank-realm
