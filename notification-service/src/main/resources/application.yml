@@ -3,3 +3,9 @@ spring:
     import: optional:configserver:http://localhost:8888
   application:
     name: notification-service
+
+textbee:
+  api:
+    key: "d0067ec4-9b8a-49c4-9295-e8120c19a162"
+  device:
+    id: "68f1c11d6a418a16ec8f483e"
