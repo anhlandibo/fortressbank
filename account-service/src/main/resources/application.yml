@@ -1,10 +1,23 @@
 spring:
-  config:
-    import: optional:configserver:http://localhost:8888
   application:
     name: account-service
+  cloud:
+    config:
+      uri: ${SPRING_CLOUD_CONFIG_URI}
   security:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:8888/realms/fortressbank-realm
+          issuer-uri: http://keycloak:8080/realms/fortressbank-realm
+  data:
+    redis:
+      host: fortressbank-redis
+      port: 6379
+  jpa:
+    hibernate:
+      ddl-auto: update
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://discovery:8761/eureka
