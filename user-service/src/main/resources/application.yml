@@ -1,10 +1,20 @@
 spring:
-  config:
-    import: optional:configserver:http://localhost:8888
   application:
     name: user-service
+  cloud:
+    config:
+      uri: ${SPRING_CLOUD_CONFIG_URI}
   security:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:8888/realms/fortressbank-realm
+          issuer-uri: http://keycloak:8080/realms/fortressbank-realm
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://discovery:8761/eureka
