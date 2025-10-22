@@ -12,4 +12,10 @@ public class AppException extends RuntimeException {
         super(errorCode.getMessage());
         this.errorCode = errorCode;
     }
+
+    // ADD THIS CONSTRUCTOR
+    public AppException(ErrorCode errorCode, String customMessage) {
+        super(customMessage); // Use the custom message from AccountService
+        this.errorCode = errorCode;
+    }
 }
