@@ -15,6 +15,7 @@ import com.uit.userservice.repository.UserRoleMappingRepository;
 import com.uit.userservice.repository.UserRoleRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,7 +34,7 @@ public class UserService {
     private final UserMapper userMapper;
 
     @Transactional
-    public UserResponse createUser(CreateUserRequest req) {
+    public UserResponse createUser(CreateUserRequest req, JwtAuthenticationToken token) {
         log.info("Creating user: {}", req.getUsername());
 
         if (userRepository.findByUsername(req.getUsername()).isPresent())
@@ -98,5 +99,19 @@ public class UserService {
                 })
                 .toList();
     }
-}
 
+    public UserResponse getUserByToken(JwtAuthenticationToken token) {
+        String userId = token.getToken().getSubject();
+        User user = userRepository.findById(userId).orElseThrow(() -> new AppException(ErrorCode.NOT_FOUND_EXCEPTION));
+        List<UserRoleMapping> mappings = mappingRepository.findByUserId(user.getUserId());
+        List<String> roleNames = mappings.stream()
+                .map(mapping -> roleRepository.findById(mapping.getRoleId())
+                        .map(UserRole::getRoleName)
+                        .orElse(null))
+                .filter(Objects::nonNull)
+                .toList();
+        UserResponse response = userMapper.toResponseDto(user);
+        response.setRoles(roleNames);
+        return response;
+    }
+}

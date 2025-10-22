@@ -12,6 +12,6 @@ import java.io.Serializable;
 @NoArgsConstructor
 @AllArgsConstructor
 public class UserRoleMappingId implements Serializable {
-    private Integer userId;
+    private String userId;
     private Integer roleId;
 }

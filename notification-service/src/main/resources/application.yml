@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: notification-service
+  cloud:
+    config:
+      uri: ${SPRING_CLOUD_CONFIG_URI}
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://discovery:8761/eureka
+
+textbee:
+  api:
+    key: "d0067ec4-9b8a-49c4-9295-e8120c19a162"
+  device:
+    id: "68f1c11d6a418a16ec8f483e"

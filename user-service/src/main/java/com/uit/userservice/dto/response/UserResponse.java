@@ -6,7 +6,7 @@ import java.util.List;
 
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class UserResponse {
-    private Integer userId;
+    private String userId;
     private String username;
     private String email;
     private LocalDateTime createdAt;

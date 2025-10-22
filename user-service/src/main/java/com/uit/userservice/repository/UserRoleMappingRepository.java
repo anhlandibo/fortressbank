@@ -7,5 +7,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 
 public interface UserRoleMappingRepository extends JpaRepository<UserRoleMapping, UserRoleMappingId> {
-    List<UserRoleMapping> findByUserId(Integer userId);
+    List<UserRoleMapping> findByUserId(String userId);
 }

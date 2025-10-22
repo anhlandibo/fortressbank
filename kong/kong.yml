@@ -1,0 +1,41 @@
+_format_version: "3.0"
+
+services:
+- name: user-service
+  url: http://user-service:4000
+  routes:
+  - name: user-service-route
+    paths:
+    - /users
+    - /roles
+    - /auth
+    strip_path: true
+
+- name: account-service
+  url: http://account-service:4001
+  routes:
+  - name: account-service-route
+    paths:
+    - /accounts
+    strip_path: true
+
+plugins:
+- name: openid-connect
+  config:
+    client_id: "kong"
+    client_secret: "XLODsjH5G3f9iqGftbrkdHeNw3NVfNdZ"
+    discovery: "http://keycloak:8080/realms/fortressbank-realm/.well-known/openid-configuration"
+    session_secret: "nk7b1GLYLE8XuDXVen2ENvpJo1BrkNGC"
+    scope: "openid profile email"
+    ssl_verify: false
+
+- name: request-transformer
+  config:
+    add:
+      headers:
+      - 'Authorization: Bearer $(headers["X-Access-Token"])'
+    remove:
+      headers:
+      - X-Access-Token
+      - X-Userinfo
+      - X-Id-Token
