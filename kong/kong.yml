@@ -7,6 +7,8 @@ services:
   - name: user-service-route
     paths:
     - /users
+    - /roles
+    - /auth
     strip_path: true
 
 - name: account-service
@@ -19,7 +21,6 @@ services:
 
 plugins:
 - name: openid-connect
-  service: user-service
   config:
     client_id: "kong"
     client_secret: "XLODsjH5G3f9iqGftbrkdHeNw3NVfNdZ"
@@ -28,12 +29,13 @@ plugins:
     scope: "openid profile email"
     ssl_verify: false
 
-- name: openid-connect
-  service: account-service
+- name: request-transformer
   config:
-    client_id: "kong"
-    client_secret: "XLODsjH5G3f9iqGftbrkdHeNw3NVfNdZ"
-    discovery: "http://keycloak:8080/realms/fortressbank-realm/.well-known/openid-configuration"
-    session_secret: "nk7b1GLYLE8XuDXVen2ENvpJo1BrkNGC"
-    scope: "openid profile email"
-    ssl_verify: false
+    add:
+      headers:
+      - 'Authorization: Bearer $(headers["X-Access-Token"])'
+    remove:
+      headers:
+      - X-Access-Token
+      - X-Userinfo
+      - X-Id-Token
