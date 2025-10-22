@@ -1,8 +1,14 @@
 spring:
-  config:
-    import: optional:configserver:http://localhost:8888
   application:
     name: notification-service
+  cloud:
+    config:
+      uri: ${SPRING_CLOUD_CONFIG_URI}
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://discovery:8761/eureka
 
 textbee:
   api:
