@@ -1,0 +1,14 @@
+spring:
+  application:
+    name: risk-engine
+  cloud:
+    config:
+      uri: ${SPRING_CLOUD_CONFIG_URI}
+
+server:
+  port: 6000
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://discovery:8761/eureka
