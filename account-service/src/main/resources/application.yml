@@ -4,11 +4,6 @@ spring:
   cloud:
     config:
       uri: ${SPRING_CLOUD_CONFIG_URI}
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: http://keycloak:8080/realms/fortressbank-realm
   data:
     redis:
       host: fortressbank-redis
@@ -21,3 +16,4 @@ eureka:
   client:
     serviceUrl:
       defaultZone: http://discovery:8761/eureka
+

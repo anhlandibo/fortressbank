@@ -10,5 +10,5 @@ import java.math.BigDecimal;
 public class RiskAssessmentRequest {
     private BigDecimal amount;
     private String userId;
-    private Long payeeId;
+    private String payeeId;
 }

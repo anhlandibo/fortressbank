@@ -15,6 +15,8 @@ import com.uit.accountservice.riskengine.dto.RiskAssessmentResponse;
 import com.uit.sharedkernel.exception.AppException;
 import com.uit.sharedkernel.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,9 +27,14 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+@Slf4j  
 @Service
 @RequiredArgsConstructor
 public class AccountService {
+
+    // Hardcoded phone number for SMS OTPs - FOR DEVELOPMENT ONLY
+    // This should be replaced with a dynamic solution in production.
+    public static final String HARDCODED_PHONE_NUMBER = "+84382505668";
 
     private final AccountRepository accountRepository;
     private final AccountMapper accountMapper;
@@ -71,17 +78,18 @@ public class AccountService {
             String otpCode = String.valueOf(100000 + (int) (Math.random() * 900000));
 
             // Send OTP via notification-service
-            webClientBuilder.build()
-                    .post()
-                    .uri("http://notification-service:4002/notifications/sms/send-otp")
-                    .bodyValue(new SendSmsOtpRequest(sourceAccount.getUserId(), otpCode))
-                    .retrieve()
-                    .bodyToMono(Void.class)
-                    .doOnError(error -> {
-                        throw new AppException(ErrorCode.NOTIFICATION_SERVICE_FAILED);
-                    })
-                    .subscribe();
-
+try {
+    webClientBuilder.build()
+        .post()
+        .uri("http://notification-service:4002/notifications/sms/send-otp")
+        .bodyValue(new SendSmsOtpRequest(HARDCODED_PHONE_NUMBER, otpCode))
+        .retrieve()
+        .bodyToMono(Void.class)
+        .block();  
+} catch (Exception e) {
+    log.error("Failed to send OTP", e);
+    throw new AppException(ErrorCode.NOTIFICATION_SERVICE_FAILED);
+}
             // Store pending transfer in Redis
             PendingTransfer pendingTransfer = new PendingTransfer(transferRequest, otpCode);
             redisTemplate.opsForValue().set("transfer:" + challengeId, pendingTransfer, 5, TimeUnit.MINUTES);
