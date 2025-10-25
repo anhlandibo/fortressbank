@@ -4,17 +4,18 @@ spring:
   cloud:
     config:
       uri: ${SPRING_CLOUD_CONFIG_URI}
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: http://keycloak:8080/realms/fortressbank-realm
-  datasource:
-    url: ${SPRING_DATASOURCE_URL}
-    username: ${SPRING_DATASOURCE_USERNAME}
-    password: ${SPRING_DATASOURCE_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: update
+
+keycloak:
+  auth-server-url: http://keycloak:8080
+  realm: fortressbank-realm
+  client-id: kong
+  client-secret: XLODsjH5G3f9iqGftbrkdHeNw3NVfNdZ
 
 eureka:
   client:
     serviceUrl:
       defaultZone: http://discovery:8761/eureka
+

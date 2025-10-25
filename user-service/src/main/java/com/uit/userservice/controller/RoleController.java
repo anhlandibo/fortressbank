@@ -4,6 +4,7 @@ import com.uit.sharedkernel.api.ApiResponse;
 import com.uit.userservice.dto.request.CreateRoleRequest;
 import com.uit.userservice.dto.response.RoleResponse;
 import com.uit.userservice.service.RoleService;
+import com.uit.userservice.security.RequireRole;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -21,6 +22,7 @@ public class RoleController
     private final RoleService roleService;
 
     @PostMapping
+    @RequireRole("admin")
     public ResponseEntity<ApiResponse<RoleResponse>> createRole(@Valid @RequestBody CreateRoleRequest request) {
         RoleResponse created = roleService.createRole(request);
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -28,6 +30,7 @@ public class RoleController
     }
 
     @GetMapping
+    @RequireRole("admin")
     public ResponseEntity<ApiResponse<List<RoleResponse>>> getAllRoles() {
         return ResponseEntity.ok(ApiResponse.success(roleService.getAllRoles()));
     }
