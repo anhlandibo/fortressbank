@@ -5,7 +5,14 @@ RUN apt-get update && \
 
 WORKDIR /app
 # Copy all modules first to satisfy Maven's multi-module build
-COPY . .
+COPY pom.xml .
+COPY account-service ./account-service
+COPY user-service ./user-service
+COPY notification-service ./notification-service
+COPY discovery ./discovery
+COPY config-server ./config-server
+COPY shared-kernel ./shared-kernel
+COPY risk-engine ./risk-engine
 RUN mvn install -DskipTests
 
 FROM eclipse-temurin:21-jre as account-service

@@ -25,3 +25,10 @@ replay_pid*
 
 account-service/target/
 notification-service/target/
+risk-engine/target/
+user-service/target/
+
+GEMINI.md
+helper.txt
+.geminiignore
+secureBank
