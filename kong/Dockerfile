@@ -51,6 +51,3 @@ RUN apt-get update && \
 COPY --from=builder /tmp/openid-connect /usr/local/share/lua/5.1/kong/plugins/openid-connect
 
 USER kong
-
-# Enable the plugin with:
-# KONG_PLUGINS=bundled,openid-connect

@@ -1,6 +1,7 @@
 networks:
   internal:
     driver: bridge
+    name: fortressbank-network
 
 volumes:
   userdb_data:
