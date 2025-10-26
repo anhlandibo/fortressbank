@@ -1,12 +1,18 @@
 package com.uit.accountservice.dto.request;
 
+import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
+import java.io.Serializable;
 import java.math.BigDecimal;
 
 @Data
-public class TransferRequest {
-    private Long fromAccountId;
-    private Long toAccountId;
+@AllArgsConstructor
+@NoArgsConstructor
+public class TransferRequest implements Serializable {
+    private static final long serialVersionUID = 1L;
+    private String fromAccountId;
+    private String toAccountId;
     private BigDecimal amount;
 }

@@ -23,9 +23,11 @@
 hs_err_pid*
 replay_pid*
 
-securebank
-helper.txt
-.geminiignore
-GEMINI.MD
 account-service/target/
 notification-service/target/
+risk-engine/target/
+user-service/target/
+
+# IntelliJ IDEA files
+.idea/
+*.iml

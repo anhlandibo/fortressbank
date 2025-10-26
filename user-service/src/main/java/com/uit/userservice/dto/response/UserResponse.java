@@ -1,14 +1,19 @@
 package com.uit.userservice.dto.response;
 
-import lombok.*;
-import java.time.LocalDateTime;
-import java.util.List;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+import java.time.LocalDateTime;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class UserResponse {
     private String userId;
     private String username;
     private String email;
     private LocalDateTime createdAt;
-    private List<String> roles;
 }

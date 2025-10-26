@@ -1,7 +1,7 @@
-package com.uit.userservice.config;
+package com.uit.accountservice.config;
 
-import com.uit.userservice.security.ParseUserInfoFilter;
-import com.uit.userservice.security.RoleCheckInterceptor;
+import com.uit.accountservice.security.ParseUserInfoFilter;
+import com.uit.accountservice.security.RoleCheckInterceptor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
