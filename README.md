@@ -85,8 +85,6 @@ To export the Keycloak realm for backup or migration, you can use the following 
 docker exec -it fortressbank-keycloak-1 /opt/keycloak/bin/kc.sh export --realm fortressbank-realm --users realm_file --dir /opt/keycloak/data/export
 ```
 
-**[NOTE: The exported file will be inside the container at `/opt/keycloak/data/export`. You will need to copy it out of the container if you want to use it on your local machine.]**
-
 ## 4. Development Workflow
 
 ### 4.1. Adding a New Feature
@@ -113,27 +111,24 @@ docker exec -it fortressbank-keycloak-1 /opt/keycloak/bin/kc.sh export --realm f
 
 This section provides a transparent overview of the project's current limitations and areas for future improvement.
 
-### 5.1. Hardcoded Values
+### 5.1. Redis Configuration
+
+*   **Issue:** The `account-service` initially struggled with connecting to Redis due to incorrect host configuration and deserialization issues.
+*   **Recommendation:** Ensure that the `spring.data.redis.host` property is correctly configured to use the Docker service name (e.g., `redis`) and that `RedisConfig.java` explicitly configures `RedisTemplate` with appropriate serializers (e.g., `GenericJackson2JsonRedisSerializer`) and DTOs have no-argument constructors for proper object storage and retrieval.
+
+### 5.2. Hardcoded Values
 
 *   **`account-service`:**
     *   **`HARDCODED_PHONE_NUMBER` in `AccountService.java`:** This is a major security risk and makes the service inflexible. **Recommendation:** Externalize this to the `application.yml` and manage it through the config server.
-    *   **Hardcoded `notification-service` URL in `AccountService.java`:** This should be managed by the config server. **Recommendation:** Use Spring Cloud's service discovery to resolve the `notification-service` URL dynamically.
-
-### 5.2. Missing Error Handling
-
-*   **`account-service`:**
-    *   **Redis Connection Errors:** The Redis operations in `AccountService.java` lack proper error handling. **Recommendation:** Implement more specific error handling for Redis connection failures.
-    *   **`notification-service` Errors:** The `webClientBuilder` call to the `notification-service` could be improved to provide more specific error information. **Recommendation:** Implement a more robust error handling mechanism for `notification-service` calls.
+    *   **Hardcoded `notification-service` URL in `AccountService.java`:** The URL for the `notification-service` is directly embedded. **Recommendation:** Use Spring Cloud's service discovery (e.g., using a Feign client or `RestTemplate` with `@LoadBalanced`) to resolve the `notification-service` URL dynamically, rather than hardcoding it.
 
 ### 5.3. Inconsistent API Responses
 
-*   **`account-service`:**
-    *   The `AccountController` returns a mix of `Map<String, Object>` and `ResponseEntity`. **Recommendation:** Refactor the controller to use the `ApiResponse` class from the `shared-kernel` for all responses.
+*   The `AccountController` currently returns a mix of `Map<String, Object>` and `ResponseEntity` types. **Recommendation:** Refactor all controllers to consistently use the `ApiResponse` class from the `shared-kernel` for all successful responses to provide a unified API experience.
 
 ### 5.4. Incomplete Features
 
-*   **`account-service`:**
-    *   The `getDashboard` method in `AccountController.java` returns hardcoded stats. **Recommendation:** Replace this with a real implementation that queries the database.
+*   **`account-service` `getDashboard` method:** The `getDashboard` method in `AccountController.java` currently returns hardcoded statistics (e.g., "totalUsers": 42). **Recommendation:** Replace this placeholder with a real implementation that queries actual data (e.g., from databases or other services) to provide meaningful dashboard information.
 
 ## 6. FortressBank Demo & Test Plan
 
@@ -147,11 +142,14 @@ Before running any flows, ensure your databases are seeded with the necessary te
     ```bash
     docker-compose -f docker-compose.base.yml -f docker-compose.infra.yml -f docker-compose.services.yml up -d
     ```
-2.  **Wait for Services:** Allow all services (especially `user-service-db` and `account-service`) to fully start and initialize.
-3.  **Database Seeding:** The `account-service` will automatically seed the `accounts` table on startup using `data.sql`. For the `user-service`, you need to manually seed the database. You can do this by executing the following Docker command:
+2.  **Wait for Services:** Allow all services (especially `user-service-db`, `account-service`, and `keycloak`) to fully start and initialize. This might take several minutes. You can monitor logs using `docker-compose logs -f`.
+3.  **Database Seeding (User Service - Manual Step):** The `account-service` will automatically seed the `accounts` table on startup using `data.sql`. For the `user-service`, you need to manually seed initial users if they are not already part of the Keycloak realm import or created by the Keycloak administrative API. Here's an example using Docker to seed a PostgreSQL `userdb`:
 
     ```bash
-    docker exec -i fortressbank-user-service-db-1 psql -U postgres -d userdb < account-service/src/main/resources/data.sql
+    # First get the container ID for user-service-db (e.g., 3be204ca6a71)
+    docker ps -q -f name=user-service-db 
+    # Then execute data.sql inside the container
+    docker exec -i <user-service-db_container_id> psql -U postgres -d userdb < account-service/src/main/resources/data.sql
     ```
 
     *   **Important:** Ensure the `user_id` for `testuser` in Keycloak matches the `user_id` (`a97acebd-b885-4dcd-9881-c9b2ef66e0ea`) used in `account-service/src/main/resources/data.sql` for `ACC001`.
@@ -167,7 +165,9 @@ This tests the `user-service` registration endpoint.
     {
       "username": "newuser",
       "email": "newuser@example.com",
-      "password": "password123"
+      "password": "password123",
+      "firstName": "New",
+      "lastName": "User"
     }
     ```
 4.  Click **Send**.
@@ -179,22 +179,22 @@ This tests the complete authentication flow via Keycloak and ownership-based acc
 
 1.  Open your browser and navigate to: `http://localhost:8000/accounts/my-accounts`
 2.  You will be redirected to the Keycloak login page.
-3.  Log in with the `testuser` credentials.
+3.  Log in with the `testuser` credentials (Username: `testuser`, Password: `password`).
 4.  You will be redirected back to the application.
-5.  **Expected Result:** You will see a JSON response showing **only your own account** (`ACC001`), pulled directly from the `account-service`.
+5.  **Expected Result:** You will see a JSON response showing **only your own account** (`ACC001`), pulled directly from the `account-service`. This confirms the database seeding and correct authentication.
 
 ### 6.4. Flow 3: Access the Admin Dashboard (Admin Role)
 
 This tests the Role-Based Access Control (RBAC) for admins via `account-service`.
 
 1.  In the same browser (while you are still logged in), navigate to: `http://localhost:8000/accounts/dashboard`
-2.  **Expected Result:** You will immediately see a JSON response showing **all accounts** in the database, because your `testuser` has the `admin` role.
+2.  **Expected Result:** You will immediately see a JSON response showing **all accounts** in the database, because your `testuser` has the `admin` role in Keycloak (as per initial setup). If `testuser` lacked the admin role, you should see an `Access Denied` or `Forbidden` error.
 
 ### 6.5. Flow 4: Make a Low-Risk Transfer (Happy Path)
 
 This tests a standard, successful transaction through `account-service`, including Redis caching.
 
-1.  First, you must get your session cookie from the browser (as you are already logged in).
+1.  First, you must get your session cookie from the browser (as you are already logged in from Flow 2 or 3).
     *   Press **F12** to open Developer Tools.
     *   Go to the **Application** (Chrome) or **Storage** (Firefox) tab.
     *   Find the cookie named **`session`** for `localhost:8000` and copy its **Value**.
@@ -203,39 +203,41 @@ This tests a standard, successful transaction through `account-service`, includi
 4.  Go to the **Headers** tab and add a new header:
     *   **KEY:** `Cookie`
     *   **VALUE:** `session=PASTE_YOUR_COOKIE_VALUE_HERE`
-5.  Go to the **Body** tab, select **raw**, and set the type to **JSON**. Paste this low-value request:
+5.  Go to the **Body** tab, select **raw**, and set the type to **JSON**. Paste this low-value request (amounts bellow 10000 are usually low risk):
     ```json
     {
-      "fromAccountId": "ACC001",
-      "toAccountId": "ACC003",
+      "fromAccountId": "ACC001",        # Assumes testuser's account
+      "toAccountId": "ACC003",          # Example recipient account
       "amount": 50
     }
     ```
 6.  Click **Send**.
-7.  **Expected Result:** You will get a `200 OK` response with a `status: "COMPLETED"` and the details of the successful transfer. The Risk Engine approved it as "LOW" risk.
+7.  **Expected Result:** You will get a `200 OK` response with a `status: "COMPLETED"` and the details of the successful transfer. The Risk Engine should approve it as "LOW" risk.
 
 ### 6.6. Flow 5: Make a High-Risk Transfer (Step-Up Authentication)
 
 This tests the full, end-to-end security flow with the Risk Engine and SMS verification via `account-service` and `notification-service`.
 
-1.  In **Postman**, use the same request as in Flow 4, but change the body to a high-value amount:
+*   **Risk Engine Behavior:** The `risk-engine` is configured to return `challengeType: "SMART_OTP"` for transactions with a risk score of 70 or higher (e.g., very high amounts or unusual hours). For scores between 40 and 69, it returns `challengeType: "SMS_OTP"`. The `account-service` currently attempts to send an SMS OTP via the `notification-service` if the transaction is not "LOW" risk, regardless of whether the `challengeType` is "SMS_OTP" or "SMART_OTP".
+
+1.  In **Postman**, use the same `Cookie` header as in Flow 4. Change the body to a high-value amount (e.g., above 10000 to trigger high risk):
     ```json
     {
       "fromAccountId": "ACC001",
       "toAccountId": "ACC003",
-      "amount": 15000
+      "amount": 15000 # This should trigger a high-risk assessment
     }
     ```
 2.  Click **Send**.
-3.  **Expected Result (Part 1):** You will get a `202 Accepted` response with `status: "CHALLENGE_REQUIRED"`. Copy the `challenge_id` from this response.
-4.  **Check your phone!** You will receive a real SMS from your TextBee app with a 6-digit OTP code.
+3.  **Expected Result (Part 1):** You will get a `202 Accepted` response with `status: "CHALLENGE_REQUIRED"` and a `challenge_id`. The `challenge_type` might be `SMART_OTP` if the risk is very high.
+4.  **Check your phone!** You *should* receive a real SMS from your TextBee app with a 6-digit OTP code. (This will be sent to the hardcoded number `+84382505668` configured in `AccountService.java`. Ensure your TextBee app is running and your API key/device ID are correctly configured in `notification-service/src/main/resources/application.yml`).
 5.  Create a **new POST** request to: `http://localhost:8000/accounts/verify-transfer`
 6.  Add the same `Cookie` header you used before.
-7.  In the **Body** (raw, JSON), paste the challenge ID and the OTP from your SMS:
+7.  In the **Body** (raw, JSON), paste the `challengeId` from Part 1 and the `otpCode` from your SMS:
     ```json
     {
-      "challenge_id": "PASTE_THE_ID_FROM_PART_1",
-      "otp_code": "PASTE_THE_CODE_FROM_YOUR_SMS"
+      "challengeId": "PASTE_THE_ID_FROM_PART_1",
+      "otpCode": "PASTE_THE_CODE_FROM_YOUR_SMS"
     }
     ```
 8.  Click **Send**.
