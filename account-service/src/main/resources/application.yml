@@ -6,7 +6,7 @@ spring:
       uri: ${SPRING_CLOUD_CONFIG_URI}
   data:
     redis:
-      host: fortressbank-redis
+      host: ${SPRING_REDIS_HOST:redis}
       port: 6379
   jpa:
     hibernate:
