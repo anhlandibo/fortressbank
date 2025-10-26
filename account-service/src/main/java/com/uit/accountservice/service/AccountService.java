@@ -17,6 +17,8 @@ import com.uit.sharedkernel.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,8 +34,9 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AccountService {
 
+    private static final Logger log = LoggerFactory.getLogger(AccountService.class);
+
     // Hardcoded phone number for SMS OTPs - FOR DEVELOPMENT ONLY
-    // This should be replaced with a dynamic solution in production.
     public static final String HARDCODED_PHONE_NUMBER = "+84382505668";
 
     private final AccountRepository accountRepository;
@@ -78,18 +81,19 @@ public class AccountService {
             String otpCode = String.valueOf(100000 + (int) (Math.random() * 900000));
 
             // Send OTP via notification-service
-try {
-    webClientBuilder.build()
-        .post()
-        .uri("http://notification-service:4002/notifications/sms/send-otp")
-        .bodyValue(new SendSmsOtpRequest(HARDCODED_PHONE_NUMBER, otpCode))
-        .retrieve()
-        .bodyToMono(Void.class)
-        .block();  
-} catch (Exception e) {
-    log.error("Failed to send OTP", e);
-    throw new AppException(ErrorCode.NOTIFICATION_SERVICE_FAILED);
-}
+            try {
+                webClientBuilder.build()
+                    .post()
+                    .uri("http://notification-service:4002/notifications/sms/send-otp")
+                    .bodyValue(new SendSmsOtpRequest(HARDCODED_PHONE_NUMBER, otpCode))
+                    .retrieve()
+                    .bodyToMono(Void.class)
+                    .block();  
+            } catch (Exception e) {
+                log.error("Failed to send OTP", e);
+                throw new AppException(ErrorCode.NOTIFICATION_SERVICE_FAILED);
+            }
+
             // Store pending transfer in Redis
             PendingTransfer pendingTransfer = new PendingTransfer(transferRequest, otpCode);
             redisTemplate.opsForValue().set("transfer:" + challengeId, pendingTransfer, 5, TimeUnit.MINUTES);
@@ -112,7 +116,7 @@ try {
         }
 
         if (pendingTransfer == null) {
-            throw new AppException(ErrorCode.NOT_FOUND_EXCEPTION, "Pending transfer not found");
+            throw new AppException(ErrorCode.NOT_FOUND_EXCEPTION, "Pending transfer not found"); // Line 115
         }
 
         if (!pendingTransfer.getOtpCode().equals(verifyTransferRequest.getOtpCode())) {
