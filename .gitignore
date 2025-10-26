@@ -28,7 +28,6 @@ notification-service/target/
 risk-engine/target/
 user-service/target/
 
-GEMINI.md
-helper.txt
-.geminiignore
-secureBank
+# IntelliJ IDEA files
+.idea/
+*.iml
