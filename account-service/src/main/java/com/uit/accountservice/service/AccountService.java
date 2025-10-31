@@ -17,8 +17,6 @@ import com.uit.sharedkernel.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,8 +31,6 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class AccountService {
-
-    private static final Logger log = LoggerFactory.getLogger(AccountService.class);
 
     // Hardcoded phone number for SMS OTPs - FOR DEVELOPMENT ONLY
     public static final String HARDCODED_PHONE_NUMBER = "+84382505668";
