@@ -2,22 +2,27 @@ package com.uit.accountservice.controller;
 
 import com.uit.accountservice.dto.request.TransferRequest;
 import com.uit.accountservice.dto.request.VerifyTransferRequest;
+import com.uit.accountservice.mapper.AccountMapper;
+import com.uit.accountservice.repository.AccountRepository;
 import com.uit.accountservice.security.RequireRole;
-import com.uit.accountservice.service.AccountService; // Import AccountService
-import com.uit.accountservice.dto.AccountDto; // Import AccountDto
-import lombok.RequiredArgsConstructor; // Import RequiredArgsConstructor
+import com.uit.accountservice.service.AccountService;
+import com.uit.accountservice.dto.AccountDto;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
-import java.util.List; // Import List
+import java.util.List;
 
 @RestController
 @RequestMapping("/accounts")
-@RequiredArgsConstructor // Add RequiredArgsConstructor for constructor injection
+@RequiredArgsConstructor
 public class AccountController {
     
-    private final AccountService accountService; // Inject AccountService
+    private final AccountService accountService;
+    private final AccountRepository accountRepository;
+    private final AccountMapper accountMapper;
 
     @GetMapping("/")
     public Map<String, Object> getRoot(HttpServletRequest request) {
@@ -30,19 +35,33 @@ public class AccountController {
     }
     
     @GetMapping("/my-accounts")
-    @RequireRole("user")  // Like requireRole('user') in Express
+    @RequireRole("user")
     public Map<String, Object> getMyAccounts(HttpServletRequest request) {
         @SuppressWarnings("unchecked")
         Map<String, Object> userInfo = (Map<String, Object>) request.getAttribute("userInfo");
-        String userId = (String) userInfo.get("sub"); // Assuming 'sub' contains the userId
+        String userId = (String) userInfo.get("sub");
 
-        List<AccountDto> accounts = accountService.getAccountsByUserId(userId); // Fetch real accounts
+        List<AccountDto> accounts = accountService.getAccountsByUserId(userId);
         
         return Map.of(
             "message", "Your accounts",
             "user", userInfo,
-            "accounts", accounts // Use real accounts
+            "accounts", accounts
         );
+    }
+    
+    /**
+     * Get a specific account by ID with ownership validation.
+     * Users can only access accounts they own.
+     */
+    @GetMapping("/{accountId}")
+    @PreAuthorize("@accountService.isOwner(#accountId, authentication.name)")
+    @RequireRole("user")
+    public ResponseEntity<AccountDto> getAccount(@PathVariable String accountId) {
+        return accountRepository.findById(accountId)
+                .map(accountMapper::toDto)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
     
     @GetMapping("/dashboard")
@@ -55,6 +74,7 @@ public class AccountController {
     }
 
     @PostMapping("/transfers")
+    @PreAuthorize("@accountService.isOwner(#transferRequest.fromAccountId, authentication.name)")
     @RequireRole("user")
     public ResponseEntity<?> handleTransfer(@RequestBody TransferRequest transferRequest, HttpServletRequest request) {
         @SuppressWarnings("unchecked")
