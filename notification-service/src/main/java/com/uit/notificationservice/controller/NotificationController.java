@@ -18,7 +18,7 @@ public class NotificationController {
     private final NotificationService notificationService;
 
     @PostMapping("/sms/send-otp")
-    public ResponseEntity<ApiResponse> sendSmsOtp(@RequestBody SendSmsOtpRequest request) {
+    public ResponseEntity<ApiResponse<String>> sendSmsOtp(@RequestBody SendSmsOtpRequest request) {
         notificationService.sendSmsOtp(request.getPhoneNumber(), request.getOtpCode());
         return ResponseEntity.ok(ApiResponse.success("SMS OTP sent successfully."));
     }
