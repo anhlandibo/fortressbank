@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,12 +15,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-import static org.hamcrest.Matchers.*;
 
 /**
  * Security Integration Tests for OWASP A01:2021 Broken Access Control
@@ -184,10 +183,10 @@ class OwnershipAccessControlTest {
      * Helper method to create UserInfoAuthentication for testing
      */
     private UserInfoAuthentication createAuthentication(String userId, String role) {
-        return new UserInfoAuthentication(
-                userId,
-                List.of(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase())),
-                true
+        Map<String, Object> userInfo = Map.of(
+                "sub", userId,
+                "realm_access", List.of(role)
         );
+        return new UserInfoAuthentication(userInfo);
     }
 }
