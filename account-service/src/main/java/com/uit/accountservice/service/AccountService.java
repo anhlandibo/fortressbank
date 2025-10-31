@@ -48,6 +48,24 @@ public class AccountService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Validates if the given user owns the specified account.
+     * Used for authorization checks before allowing account operations.
+     * 
+     * @param accountId the account ID to check
+     * @param username the username (subject from JWT)
+     * @return true if the user owns the account, false otherwise
+     */
+    public boolean isOwner(String accountId, String username) {
+        if (accountId == null || username == null) {
+            return false;
+        }
+        
+        return accountRepository.findById(accountId)
+                .map(account -> account.getUserId().equals(username))
+                .orElse(false);
+    }
+
     @Transactional
     public Object handleTransfer(TransferRequest transferRequest, String userId) {
         // Security checks

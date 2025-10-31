@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -16,7 +17,7 @@ import java.util.Map;
 public class ParseUserInfoFilter implements Filter {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private static final Logger log = LoggerFactory.getLogger(ParseUserInfoFilter.class); // Add logger
+    private static final Logger log = LoggerFactory.getLogger(ParseUserInfoFilter.class);
 
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
@@ -27,32 +28,40 @@ public class ParseUserInfoFilter implements Filter {
 
         String userInfoHeader = httpRequest.getHeader("X-Userinfo");
 
-        // *** ADD LOGGING HERE ***
-        log.info("Received X-Userinfo header: {}", userInfoHeader);
-        // ***********************
+        log.debug("Received X-Userinfo header present: {}", userInfoHeader != null);
 
         if (userInfoHeader == null || userInfoHeader.isEmpty()) {
-            // ... (existing code for missing header)
+            httpResponse.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            httpResponse.setContentType("application/json");
+            httpResponse.getWriter().write("{\"error\":\"Unauthorized: Missing user information.\"}");
             return;
         }
 
         try {
-            // ... (existing try block code)
             String decodedHeader = new String(Base64.getDecoder().decode(userInfoHeader));
-            log.debug("Decoded X-Userinfo header: {}", decodedHeader); // Optional: log decoded value too
+            log.debug("Decoded X-Userinfo header: {}", decodedHeader);
+            
             @SuppressWarnings("unchecked")
             Map<String, Object> userInfo = objectMapper.readValue(decodedHeader, Map.class);
+            
+            // Store in request attribute (for backward compatibility)
             httpRequest.setAttribute("userInfo", userInfo);
+            
+            // Set Spring Security authentication context (for @PreAuthorize)
+            UserInfoAuthentication authentication = new UserInfoAuthentication(userInfo);
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+            
             chain.doFilter(request, response);
+            
         } catch (Exception e) {
-            // *** Log the specific exception ***
             log.error("Failed to parse X-Userinfo header. Raw value: '{}'", userInfoHeader, e);
-            // **********************************
 
             httpResponse.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             httpResponse.setContentType("application/json");
-            // Fix the typo here:
             httpResponse.getWriter().write("{\"error\":\"Bad Request: Malformed user information.\"}");
+        } finally {
+            // Clear security context after request
+            SecurityContextHolder.clearContext();
         }
     }
 }
