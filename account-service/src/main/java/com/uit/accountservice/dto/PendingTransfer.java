@@ -14,4 +14,10 @@ public class PendingTransfer implements Serializable {
     private static final long serialVersionUID = 1L;
     private TransferRequest transferRequest;
     private String otpCode;
+    private String userId;
+    private String deviceFingerprint;
+    private String ipAddress;
+    private String location;
+    private String riskLevel;
+    private String challengeType;
 }
