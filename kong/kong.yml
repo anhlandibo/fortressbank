@@ -1,5 +1,9 @@
 _format_version: "3.0"
 
+# ============================================================================
+# SERVICES & ROUTES
+# ============================================================================
+
 services:
 - name: user-service
   url: http://user-service:4000
@@ -61,17 +65,7 @@ plugins:
 # ============================================================================
 
 plugins:
-- name: openid-connect
-  service: account-service
-  config:
-    client_id: "kong"
-    client_secret: "XLODsjH5G3f9iqGftbrkdHeNw3NVfNdZ"
-    discovery: "http://keycloak:8080/realms/fortressbank-realm/.well-known/openid-configuration"
-    session_secret: "nk7b1GLYLE8XuDXVen2ENvpJo1BrkNGC"
-    scope: "openid profile email"
-    ssl_verify: false
-
-plugins:
+# --- Authentication: OpenID Connect via Keycloak ---
 - name: openid-connect
   service: account-service
   config:
@@ -91,3 +85,24 @@ plugins:
     session_secret: "nk7b1GLYLE8XuDXVen2ENvpJo1BrkNGC"
     scope: "openid profile email"
     ssl_verify: false
+
+# --- Rate Limiting: DoS Protection ---
+# Account Service: Stricter limits (financial operations)
+- name: rate-limiting
+  service: account-service
+  config:
+    minute: 60              # 60 requests per minute
+    hour: 2000              # 2000 requests per hour
+    policy: local           # In-memory (fastest, suitable for single Kong node)
+    fault_tolerant: true    # Continue if rate limiter fails
+    hide_client_headers: false
+
+# User Service: Moderate limits (user management)
+- name: rate-limiting
+  service: user-service
+  config:
+    minute: 80              # 80 requests per minute
+    hour: 3000              # 3000 requests per hour
+    policy: local
+    fault_tolerant: true
+    hide_client_headers: false
