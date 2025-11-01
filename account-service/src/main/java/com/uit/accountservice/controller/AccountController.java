@@ -60,7 +60,17 @@ public class AccountController {
         @SuppressWarnings("unchecked")
         Map<String, Object> userInfo = (Map<String, Object>) request.getAttribute("userInfo");
         String userId = (String) userInfo.get("sub");
-        return ResponseEntity.ok(accountService.handleTransfer(transferRequest, userId));
+        
+        // Extract fraud detection metadata from headers
+        String deviceFingerprint = request.getHeader("X-Device-Fingerprint");
+        String ipAddress = request.getHeader("X-Forwarded-For");
+        if (ipAddress == null) {
+            ipAddress = request.getRemoteAddr();
+        }
+        String location = request.getHeader("X-Location"); // Expected format: "City, Country" or "Country"
+        
+        return ResponseEntity.ok(accountService.handleTransfer(
+                transferRequest, userId, deviceFingerprint, ipAddress, location));
     }
 
     @PostMapping("/verify-transfer")

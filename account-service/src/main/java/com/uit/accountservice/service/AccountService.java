@@ -49,7 +49,8 @@ public class AccountService {
     }
 
     @Transactional
-    public Object handleTransfer(TransferRequest transferRequest, String userId) {
+    public Object handleTransfer(TransferRequest transferRequest, String userId, 
+                                 String deviceFingerprint, String ipAddress, String location) {
         // Security checks
         Account sourceAccount = accountRepository.findById(transferRequest.getFromAccountId())
                 .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Source account not found"));
@@ -62,11 +63,18 @@ public class AccountService {
             throw new AppException(ErrorCode.INSUFFICIENT_FUNDS);
         }
 
-        // Risk assessment
+        // Risk assessment with enhanced fraud detection
         RiskAssessmentResponse riskAssessment;
         try {
             riskAssessment = riskEngineService.assessRisk(
-                    new RiskAssessmentRequest(transferRequest.getAmount(), userId, transferRequest.getToAccountId()));
+                    RiskAssessmentRequest.builder()
+                            .amount(transferRequest.getAmount())
+                            .userId(userId)
+                            .payeeId(transferRequest.getToAccountId())
+                            .deviceFingerprint(deviceFingerprint)
+                            .ipAddress(ipAddress)
+                            .location(location)
+                            .build());
         } catch (Exception e) {
             throw new AppException(ErrorCode.RISK_ASSESSMENT_FAILED);
         }
