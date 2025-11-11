@@ -250,3 +250,59 @@ This confirms the database was updated by `account-service`.
 1.  Go back to your **browser** (still logged in).
 2.  Refresh the `http://localhost:8000/accounts/my-accounts` page.
 3.  **Expected Result:** You will see your account's balance has decreased by the amounts you transferred. This confirms the data is persistent and the entire flow worked.
+
+## 7. Audit Logging (P1) — Transfers
+
+FortressBank keeps an immutable, tamper-resistant audit trail for all transfer activity. The audit trail is written in its own transaction so logs persist even if the main transfer fails.
+
+What is logged:
+- userId, fromAccountId, toAccountId
+- amount, status (PENDING, COMPLETED, FAILED, REJECTED, CANCELLED, EXPIRED)
+- riskLevel and challengeType returned by the Risk Engine
+- deviceFingerprint, ipAddress, location
+- failureReason (if any) and a creation timestamp
+
+Endpoints (who can call):
+- GET /accounts/audit/my-transfers — user: view your transfer audit history
+- GET /accounts/audit/account/{accountId} — user (owner only): view audit for an account
+- GET /accounts/audit/high-value?minAmount=10000&hours=24 — admin: recent high-value transfers
+- GET /accounts/audit/failed?hours=24 — admin: failed/rejected/expired transfers
+- GET /accounts/audit/velocity/{userId}?minutes=60 — admin: transfer count for velocity checks
+
+Quick test (Postman / curl):
+
+- As a user (own history):
+    - Request: GET http://localhost:8000/accounts/audit/my-transfers
+    - Auth: Cookie-based session from Keycloak (as used in other flows) or a valid JWT via Kong
+
+- As an admin (high-value):
+    - Request: GET http://localhost:8000/accounts/audit/high-value?minAmount=10000&hours=24
+    - Role: admin in Keycloak
+
+Notes and tips:
+- The audit records are written with REQUIRES_NEW transactions. Audit failures are logged server-side but do not abort the main transfer.
+- For local testing the `account-service` stores pending OTP challenges in Redis. Make sure `redis` is running in your Docker Compose stack.
+- The `PROJECT_REFERENCE.md` in `.tmp/` contains the high-level vision and security decisions. Read it before making architectural changes: `.tmp/PROJECT_REFERENCE.md`.
+
+## 8. What we changed recently
+
+- P1 Audit logging: implemented `TransferAuditLog` entity, repository, service and integrated logging into transfer flows. Branch was merged into `main` and pushed.
+
+## 9. How to run the audit queries locally (example curl)
+
+1. Get session cookie from browser (see Flow 4) or a valid JWT.
+2. Example curl (replace SESSION_COOKIE or JWT):
+
+```bash
+# Using session cookie
+curl -s -H "Cookie: session=SESSION_COOKIE" \
+    http://localhost:8000/accounts/audit/my-transfers | jq .
+
+# Using bearer token
+curl -s -H "Authorization: Bearer $JWT" \
+    "http://localhost:8000/accounts/audit/high-value?minAmount=10000&hours=24" | jq .
+```
+
+---
+
+For further architectural context and the project's guiding principles, see `.tmp/PROJECT_REFERENCE.md`.
