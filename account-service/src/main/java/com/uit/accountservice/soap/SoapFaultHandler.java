@@ -22,6 +22,9 @@ import java.time.Instant;
  * - SoapSecurityException → SOAP Fault (authentication/authorization errors)
  * - AppException → SOAP Fault (business logic errors)
  * - Generic Exception → SOAP Fault (unexpected errors)
+ * 
+ * Note: In Spring WS 4.x, SoapFault is created by the framework.
+ * We only customize the fault details via addFaultDetail().
  */
 @Slf4j
 public class SoapFaultHandler extends SoapFaultMappingExceptionResolver {
@@ -30,41 +33,21 @@ public class SoapFaultHandler extends SoapFaultMappingExceptionResolver {
 
     @Override
     protected void customizeFault(Object endpoint, Exception ex, SoapFault fault) {
-        log.error("SOAP Fault occurred", ex);
+        log.error("SOAP Fault occurred: {}", ex.getMessage(), ex);
 
+        // Add structured fault details
         SoapFaultDetail detail = fault.addFaultDetail();
         
-        if (ex instanceof SoapSecurityException) {
-            handleSecurityException((SoapSecurityException) ex, fault, detail);
-        } else if (ex instanceof AppException) {
-            handleAppException((AppException) ex, fault, detail);
+        if (ex instanceof SoapSecurityException secEx) {
+            addFaultDetail(detail, secEx.getFaultCode(), secEx.getFaultMessage());
+        } else if (ex instanceof AppException appEx) {
+            String faultCode = mapErrorCodeToFaultCode(appEx.getErrorCode().name());
+            addFaultDetail(detail, faultCode, appEx.getMessage());
         } else {
-            handleGenericException(ex, fault, detail);
+            addFaultDetail(detail, "INTERNAL_ERROR", "An unexpected error occurred: " + ex.getMessage());
         }
     }
 
-    private void handleSecurityException(SoapSecurityException ex, SoapFault fault, SoapFaultDetail detail) {
-        fault.setFaultCode(QName.valueOf("SOAP-ENV:Client"));
-        fault.setFaultStringOrReason(ex.getFaultMessage());
-
-        addFaultDetail(detail, ex.getFaultCode(), ex.getFaultMessage());
-    }
-
-    private void handleAppException(AppException ex, SoapFault fault, SoapFaultDetail detail) {
-        // Map AppException error codes to SOAP fault codes
-        String faultCode = mapErrorCodeToFaultCode(ex.getErrorCode().name());
-        fault.setFaultCode(QName.valueOf("SOAP-ENV:Client"));
-        fault.setFaultStringOrReason(ex.getMessage());
-
-        addFaultDetail(detail, faultCode, ex.getMessage());
-    }
-
-    private void handleGenericException(Exception ex, SoapFault fault, SoapFaultDetail detail) {
-        fault.setFaultCode(QName.valueOf("SOAP-ENV:Server"));
-        fault.setFaultStringOrReason("Internal server error");
-
-        addFaultDetail(detail, "INTERNAL_ERROR", "An unexpected error occurred");
-    }
 
     private void addFaultDetail(SoapFaultDetail detail, String faultCode, String faultMessage) {
         detail.addFaultDetailElement(new QName(NAMESPACE, "faultCode"))
