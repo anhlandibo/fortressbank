@@ -6,6 +6,7 @@ import com.uit.accountservice.dto.request.SendSmsOtpRequest;
 import com.uit.accountservice.dto.request.TransferRequest;
 import com.uit.accountservice.dto.request.VerifyTransferRequest;
 import com.uit.accountservice.dto.response.ChallengeResponse;
+import com.uit.accountservice.dto.response.SmartChallengeResponse;
 import com.uit.accountservice.entity.Account;
 import com.uit.accountservice.entity.TransferStatus;
 import com.uit.accountservice.mapper.AccountMapper;
@@ -23,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -202,12 +204,77 @@ public class AccountService {
                     "OTP challenge issued"
             );
 
-            return new ChallengeResponse("CHALLENGE_REQUIRED", challengeId, riskAssessment.getChallengeType());
+            // Return appropriate response based on risk level
+            if ("SMART_OTP".equals(riskAssessment.getChallengeType())) {
+                // HIGH RISK → Smart Challenge (detailed context)
+                return buildSmartChallengeResponse(
+                        challengeId,
+                        transferRequest,
+                        sourceAccount,
+                        riskAssessment
+                );
+            } else {
+                // MEDIUM RISK → Basic Challenge (simple OTP)
+                return new ChallengeResponse(
+                        "CHALLENGE_REQUIRED",
+                        challengeId,
+                        riskAssessment.getChallengeType()
+                );
+            }
         } else {
             // Execute transfer immediately (low risk)
             AccountDto result = createTransfer(transferRequest, userId, deviceFingerprint, ipAddress, location, riskAssessment);
             return result;
         }
+    }
+
+    /**
+     * Build Smart Challenge Response with full context for high-risk transactions.
+     * 
+     * Provides users with:
+     * - Transaction details to review
+     * - Risk factors detected (security transparency)
+     * - Security guidance
+     */
+    private SmartChallengeResponse buildSmartChallengeResponse(
+            String challengeId,
+            TransferRequest transferRequest,
+            Account sourceAccount,
+            RiskAssessmentResponse riskAssessment) {
+        
+        // Check if recipient is new (basic check - can be enhanced with payee history)
+        boolean isNewRecipient = !transferRequest.getToAccountId().equals(transferRequest.getFromAccountId());
+        
+        // Calculate remaining balance
+        BigDecimal remainingBalance = sourceAccount.getBalance().subtract(transferRequest.getAmount());
+        
+        return SmartChallengeResponse.builder()
+                .status("SMART_CHALLENGE_REQUIRED")
+                .challengeId(challengeId)
+                .challengeType("SMART_OTP")
+                .transaction(SmartChallengeResponse.TransactionContext.builder()
+                        .fromAccountId(transferRequest.getFromAccountId())
+                        .toAccountId(transferRequest.getToAccountId())
+                        .amount(transferRequest.getAmount())
+                        .currency("VND")
+                        .currentBalance(sourceAccount.getBalance())
+                        .remainingBalance(remainingBalance)
+                        .isNewRecipient(isNewRecipient)
+                        .recipientName(null) // TODO: Lookup from payee service
+                        .build())
+                .risk(SmartChallengeResponse.RiskContext.builder()
+                        .riskLevel(riskAssessment.getRiskLevel())
+                        .riskScore(riskAssessment.getRiskScore())
+                        .detectedFactors(riskAssessment.getDetectedFactors())
+                        .primaryReason(riskAssessment.getPrimaryReason())
+                        .build())
+                .guidance(SmartChallengeResponse.SecurityGuidance.builder()
+                        .message("Enter the verification code sent to your registered phone")
+                        .warning("⚠️ If you did NOT initiate this transfer, contact support immediately")
+                        .expirySeconds(300) // 5 minutes
+                        .supportContact("support@fortressbank.com")
+                        .build())
+                .build();
     }
 
     @Transactional

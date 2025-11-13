@@ -4,12 +4,14 @@ import com.uit.riskengine.client.UserRiskProfileClient;
 import com.uit.riskengine.dto.RiskAssessmentRequest;
 import com.uit.riskengine.dto.RiskAssessmentResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class RiskEngineService {
@@ -104,11 +106,19 @@ public class RiskEngineService {
             challengeType = "NONE";
         }
 
-        RiskAssessmentResponse response = new RiskAssessmentResponse();
-        response.setRiskLevel(riskLevel);
-        response.setChallengeType(challengeType);
-        // Note: secureBank's risk engine returned score and reasons, but fortressbank's DTO only expects riskLevel and challengeType.
-        // If score and reasons are needed by account-service, RiskAssessmentResponse DTO in account-service needs to be updated.
+        // Find primary reason (highest scoring factor)
+        String primaryReason = reasons.isEmpty() ? "Routine verification" : reasons.get(0);
+
+        RiskAssessmentResponse response = RiskAssessmentResponse.builder()
+                .riskLevel(riskLevel)
+                .challengeType(challengeType)
+                .riskScore(score)
+                .detectedFactors(reasons)
+                .primaryReason(primaryReason)
+                .build();
+
+        log.info("Risk assessment completed: userId={}, score={}, level={}, factors={}",
+                request.getUserId(), score, riskLevel, reasons.size());
         return response;
     }
 }
