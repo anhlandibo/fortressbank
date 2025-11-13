@@ -32,7 +32,8 @@ public class SecurityConfig implements WebMvcConfigurer {
             .csrf(csrf -> csrf.disable())
             .addFilterBefore(parseUserInfoFilter, UsernamePasswordAuthenticationFilter.class)
             .authorizeHttpRequests(auth -> auth
-                .anyRequest().permitAll() // Kong already authenticated
+                .requestMatchers("/ws/**").permitAll() // Allow SOAP endpoints (JWT validated by SoapSecurityInterceptor)
+                .anyRequest().permitAll() // Kong already authenticated for REST
             );
         return http.build();
     }

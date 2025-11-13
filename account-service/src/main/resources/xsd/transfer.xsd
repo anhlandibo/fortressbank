@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:tns="http://fortressbank.com/services/transfer"
+           targetNamespace="http://fortressbank.com/services/transfer"
+           elementFormDefault="qualified">
+
+    <!-- Transfer Request -->
+    <xs:element name="TransferRequest">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="fromAccountId" type="xs:string"/>
+                <xs:element name="toAccountId" type="xs:string"/>
+                <xs:element name="amount" type="xs:decimal"/>
+                <xs:element name="currency" type="xs:string" default="VND"/>
+                <xs:element name="description" type="xs:string" minOccurs="0"/>
+                <xs:element name="deviceFingerprint" type="xs:string" minOccurs="0"/>
+                <xs:element name="ipAddress" type="xs:string" minOccurs="0"/>
+                <xs:element name="location" type="xs:string" minOccurs="0"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+
+    <!-- Transfer Response -->
+    <xs:element name="TransferResponse">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="status" type="xs:string"/>
+                <xs:element name="transactionId" type="xs:string" minOccurs="0"/>
+                <xs:element name="challengeId" type="xs:string" minOccurs="0"/>
+                <xs:element name="challengeType" type="xs:string" minOccurs="0"/>
+                <xs:element name="riskLevel" type="xs:string" minOccurs="0"/>
+                <xs:element name="message" type="xs:string" minOccurs="0"/>
+                <xs:element name="timestamp" type="xs:dateTime"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+
+    <!-- Verify Transfer Request -->
+    <xs:element name="VerifyTransferRequest">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="challengeId" type="xs:string"/>
+                <xs:element name="otpCode" type="xs:string"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+
+    <!-- Verify Transfer Response -->
+    <xs:element name="VerifyTransferResponse">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="status" type="xs:string"/>
+                <xs:element name="transactionId" type="xs:string" minOccurs="0"/>
+                <xs:element name="message" type="xs:string" minOccurs="0"/>
+                <xs:element name="balance" type="xs:decimal" minOccurs="0"/>
+                <xs:element name="timestamp" type="xs:dateTime"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+
+    <!-- SOAP Fault Detail -->
+    <xs:element name="TransferFault">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="faultCode" type="xs:string"/>
+                <xs:element name="faultMessage" type="xs:string"/>
+                <xs:element name="timestamp" type="xs:dateTime"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+
+</xs:schema>
