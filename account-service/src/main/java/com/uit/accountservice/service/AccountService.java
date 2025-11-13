@@ -44,6 +44,7 @@ public class AccountService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final WebClient.Builder webClientBuilder;
     private final TransferAuditService auditService;
+    private final SmartOtpService smartOtpService;
 
     public List<AccountDto> getAccountsByUserId(String userId) {
         return accountRepository.findByUserId(userId)
@@ -144,6 +145,80 @@ public class AccountService {
         }
 
         if (!riskAssessment.getRiskLevel().equals("LOW")) {
+            // Check if user has Smart OTP eligible devices
+            List<com.uit.accountservice.entity.UserDevice> eligibleDevices = 
+                    smartOtpService.listUserDevices(userId).stream()
+                            .filter(d -> d.isEligibleForSmartOtp())
+                            .toList();
+
+            if (!eligibleDevices.isEmpty()) {
+                // HIGH RISK + REGISTERED DEVICE → Use REAL Smart OTP (push + biometric + crypto)
+                log.info("Smart OTP available for userId={}, triggering device authentication", userId);
+                
+                // Create transaction context JSON
+                String transactionContext = String.format(
+                        "{\"from\":\"%s\",\"to\":\"%s\",\"amount\":%s,\"currency\":\"VND\"}",
+                        transferRequest.getFromAccountId(),
+                        transferRequest.getToAccountId(),
+                        transferRequest.getAmount()
+                );
+                
+                // Create Smart OTP challenge (generates crypto challenge, sends push notification)
+                SmartChallengeResponse smartChallenge = smartOtpService.createChallenge(userId, transactionContext);
+                
+                // Store pending transfer in Redis with Smart OTP challenge ID
+                PendingTransfer pendingTransfer = new PendingTransfer(
+                        transferRequest,
+                        null, // No SMS OTP code
+                        userId,
+                        deviceFingerprint,
+                        ipAddress,
+                        location,
+                        riskAssessment.getRiskLevel(),
+                        "SMART_OTP"
+                );
+                redisTemplate.opsForValue().set("transfer:" + smartChallenge.getChallengeId(), pendingTransfer, 5, TimeUnit.MINUTES);
+                
+                // Audit: Smart OTP challenge issued
+                auditService.logTransfer(
+                        userId,
+                        transferRequest.getFromAccountId(),
+                        transferRequest.getToAccountId(),
+                        transferRequest.getAmount(),
+                        TransferStatus.PENDING,
+                        riskAssessment.getRiskLevel(),
+                        "SMART_OTP",
+                        deviceFingerprint,
+                        ipAddress,
+                        location,
+                        "Smart OTP challenge sent to device: " + eligibleDevices.get(0).getDeviceName()
+                );
+                
+                // Enhance response with transaction details
+                smartChallenge.setTransaction(SmartChallengeResponse.TransactionContext.builder()
+                        .fromAccountId(transferRequest.getFromAccountId())
+                        .toAccountId(transferRequest.getToAccountId())
+                        .amount(transferRequest.getAmount())
+                        .currency("VND")
+                        .currentBalance(sourceAccount.getBalance())
+                        .remainingBalance(sourceAccount.getBalance().subtract(transferRequest.getAmount()))
+                        .isNewRecipient(true) // TODO: Check payee history
+                        .recipientName(null)
+                        .build());
+                
+                smartChallenge.setRisk(SmartChallengeResponse.RiskContext.builder()
+                        .riskLevel(riskAssessment.getRiskLevel())
+                        .riskScore(riskAssessment.getRiskScore())
+                        .detectedFactors(riskAssessment.getDetectedFactors())
+                        .primaryReason(riskAssessment.getPrimaryReason())
+                        .build());
+                
+                return smartChallenge;
+            }
+            
+            // FALLBACK: No registered device → Use SMS OTP
+            log.info("No Smart OTP device available for userId={}, falling back to SMS OTP", userId);
+            
             // Step-up authentication required
             String challengeId = UUID.randomUUID().toString();
             String otpCode = String.valueOf(100000 + (int) (Math.random() * 900000));
@@ -305,25 +380,67 @@ public class AccountService {
             throw new AppException(ErrorCode.NOT_FOUND_EXCEPTION, "Pending transfer not found");
         }
 
-        if (!pendingTransfer.getOtpCode().equals(verifyTransferRequest.getOtpCode())) {
-            // Audit: Invalid OTP attempt
-            auditService.logTransfer(
-                    pendingTransfer.getUserId(),
-                    pendingTransfer.getTransferRequest().getFromAccountId(),
-                    pendingTransfer.getTransferRequest().getToAccountId(),
-                    pendingTransfer.getTransferRequest().getAmount(),
-                    TransferStatus.FAILED,
-                    pendingTransfer.getRiskLevel(),
-                    pendingTransfer.getChallengeType(),
-                    pendingTransfer.getDeviceFingerprint(),
-                    pendingTransfer.getIpAddress(),
-                    pendingTransfer.getLocation(),
-                    "Invalid OTP code"
-            );
-            throw new AppException(ErrorCode.INVALID_OTP);
+        // Check if this is a Smart OTP challenge (signature-based) or SMS OTP (code-based)
+        if ("SMART_OTP".equals(pendingTransfer.getChallengeType())) {
+            // SMART OTP PATH: Verify cryptographic signature from device
+            log.info("Verifying Smart OTP signature for challengeId={}", verifyTransferRequest.getChallengeId());
+            
+            com.uit.accountservice.dto.request.VerifySmartOtpRequest smartOtpRequest = 
+                    new com.uit.accountservice.dto.request.VerifySmartOtpRequest(
+                            verifyTransferRequest.getChallengeId(),
+                            verifyTransferRequest.getSignature(),
+                            verifyTransferRequest.getApproved()
+                    );
+            
+            boolean signatureValid = smartOtpService.verifySmartOtp(smartOtpRequest);
+            
+            if (!signatureValid) {
+                // Audit: Invalid signature or user rejected
+                auditService.logTransfer(
+                        pendingTransfer.getUserId(),
+                        pendingTransfer.getTransferRequest().getFromAccountId(),
+                        pendingTransfer.getTransferRequest().getToAccountId(),
+                        pendingTransfer.getTransferRequest().getAmount(),
+                        TransferStatus.FAILED,
+                        pendingTransfer.getRiskLevel(),
+                        "SMART_OTP",
+                        pendingTransfer.getDeviceFingerprint(),
+                        pendingTransfer.getIpAddress(),
+                        pendingTransfer.getLocation(),
+                        Boolean.FALSE.equals(verifyTransferRequest.getApproved()) 
+                                ? "User rejected transaction on device" 
+                                : "Invalid cryptographic signature"
+                );
+                throw new AppException(ErrorCode.INVALID_OTP, 
+                        Boolean.FALSE.equals(verifyTransferRequest.getApproved())
+                                ? "Transaction rejected by user"
+                                : "Invalid signature");
+            }
+            
+            log.info("Smart OTP signature verified successfully for challengeId={}", verifyTransferRequest.getChallengeId());
+            
+        } else {
+            // SMS OTP PATH: Verify 6-digit code
+            if (!pendingTransfer.getOtpCode().equals(verifyTransferRequest.getOtpCode())) {
+                // Audit: Invalid OTP attempt
+                auditService.logTransfer(
+                        pendingTransfer.getUserId(),
+                        pendingTransfer.getTransferRequest().getFromAccountId(),
+                        pendingTransfer.getTransferRequest().getToAccountId(),
+                        pendingTransfer.getTransferRequest().getAmount(),
+                        TransferStatus.FAILED,
+                        pendingTransfer.getRiskLevel(),
+                        pendingTransfer.getChallengeType(),
+                        pendingTransfer.getDeviceFingerprint(),
+                        pendingTransfer.getIpAddress(),
+                        pendingTransfer.getLocation(),
+                        "Invalid OTP code"
+                );
+                throw new AppException(ErrorCode.INVALID_OTP);
+            }
         }
 
-        // Execute the transfer
+        // OTP/Signature verified → Execute transfer
         AccountDto accountDto = createTransfer(
                 pendingTransfer.getTransferRequest(), 
                 pendingTransfer.getUserId(),

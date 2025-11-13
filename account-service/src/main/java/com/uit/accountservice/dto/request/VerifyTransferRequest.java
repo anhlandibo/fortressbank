@@ -9,5 +9,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class VerifyTransferRequest {
     private String challengeId;
-    private String otpCode;
+    private String otpCode;           // For SMS OTP (legacy)
+    private String signature;         // For Smart OTP (cryptographic signature)
+    private Boolean approved;         // For Smart OTP (user explicitly approved/rejected)
 }
