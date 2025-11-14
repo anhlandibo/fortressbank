@@ -11,6 +11,13 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
+    show-sql: false
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+      data-locations: classpath:data.sql
+      continue-on-error: true
 
 # JWT Configuration for SOAP Security
 jwt:
