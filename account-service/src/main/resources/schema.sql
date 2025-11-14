@@ -6,12 +6,13 @@ CREATE TABLE IF NOT EXISTS accounts (
     account_id VARCHAR(255) PRIMARY KEY,
     user_id VARCHAR(255) NOT NULL,
     balance DECIMAL(19, 2) NOT NULL DEFAULT 0.00,
-    account_type VARCHAR(50) NOT NULL
+    account_type VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Transfer Audit Log (existing - from fraud detection)
-CREATE TABLE IF NOT EXISTS transfer_audit (
-    id BIGSERIAL PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS transfer_audit_logs (
+    id VARCHAR(36) PRIMARY KEY,
     user_id VARCHAR(36) NOT NULL,
     from_account_id VARCHAR(36) NOT NULL,
     to_account_id VARCHAR(36) NOT NULL,
@@ -23,13 +24,15 @@ CREATE TABLE IF NOT EXISTS transfer_audit (
     ip_address VARCHAR(50),
     location VARCHAR(255),
     notes TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_transfer_audit_user_id ON transfer_audit(user_id);
-CREATE INDEX IF NOT EXISTS idx_transfer_audit_from_account ON transfer_audit(from_account_id);
-CREATE INDEX IF NOT EXISTS idx_transfer_audit_created_at ON transfer_audit(created_at);
-CREATE INDEX IF NOT EXISTS idx_transfer_audit_status ON transfer_audit(status);
+CREATE INDEX IF NOT EXISTS idx_audit_user ON transfer_audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_status ON transfer_audit_logs(status);
+CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON transfer_audit_logs(timestamp);
+CREATE INDEX IF NOT EXISTS idx_audit_from_account ON transfer_audit_logs(from_account_id);
+CREATE INDEX IF NOT EXISTS idx_audit_to_account ON transfer_audit_logs(to_account_id);
+CREATE INDEX IF NOT EXISTS idx_audit_risk_level ON transfer_audit_logs(risk_level);
 
 -- =============================================
 -- SMART OTP TABLES

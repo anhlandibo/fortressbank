@@ -1,7 +1,9 @@
-INSERT INTO accounts (account_id, user_id, balance, account_type) VALUES
-('40e6a5c0-2a0b-4e1a-8b0a-0e0a0e0a0e0a', 'a97acebd-b885-4dcd-9881-c9b2ef66e0ea', 1000000.00, 'CHECKING'),
-('40e6a5c0-2a0b-4e1a-8b0a-0e0a0e0a0e0b', 'user-jane-doe', 12345.00, 'SAVINGS'),
-('40e6a5c0-2a0b-4e1a-8b0a-0e0a0e0a0e0c', 'user-john-smith', 987.65, 'CHECKING');
+-- Seed accounts (with conflict handling for Docker restarts)
+INSERT INTO accounts (account_id, user_id, balance, account_type, created_at) VALUES
+('40e6a5c0-2a0b-4e1a-8b0a-0e0a0e0a0e0a', 'a97acebd-b885-4dcd-9881-c9b2ef66e0ea', 1000000.00, 'CHECKING', CURRENT_TIMESTAMP),
+('40e6a5c0-2a0b-4e1a-8b0a-0e0a0e0a0e0b', 'user-jane-doe', 12345.00, 'SAVINGS', CURRENT_TIMESTAMP),
+('40e6a5c0-2a0b-4e1a-8b0a-0e0a0e0a0e0c', 'user-john-smith', 987.65, 'CHECKING', CURRENT_TIMESTAMP)
+ON CONFLICT (account_id) DO NOTHING;
 
 -- Test Smart OTP Device (for development/testing)
 -- This simulates a registered iPhone with Face ID enabled
