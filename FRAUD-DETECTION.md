@@ -98,13 +98,13 @@ fetch('/accounts/transfers', {
 └────────┬─────────┘
          │
          ▼
-┌──────────────────┐      ┌──────────────┐
-│  Risk Engine     │─────▶│ User Service │
-│  - 6 Rule Engine │      │ (RiskProfile)│
-│  - Score calc    │◀─────│ - Known devs │
-└──────────────────┘      │ - Known locs │
+┌──────────────────┐      ┌───────────────┐
+│  Risk Engine     │─────▶│ User Service  │
+│  - 6 Rule Engine │      │ (RiskProfile) │
+│  - Score calc    │◀─────│ - Known devs  │
+└──────────────────┘      │ - Known locs  │
                           │ - Known payees│
-                          └──────────────┘
+                          └───────────────┘
 ```
 
 ## Benefits
