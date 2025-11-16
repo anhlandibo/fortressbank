@@ -21,7 +21,7 @@ public class Bank {
     @Column(name = "bank_name", nullable = false, length = 100)
     private String bankName;
 
-    @Column(name = "logo_url", length = 100)
+    @Column(name = "logo_url", length = 200)
     private String logoUrl;
 
     @Column(name = "status", length = 10)
