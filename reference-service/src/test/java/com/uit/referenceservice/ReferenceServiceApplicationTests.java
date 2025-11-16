@@ -1,4 +1,4 @@
-package com.uit.fortressbank.reference_service;
+package com.uit.referenceservice;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -11,3 +11,4 @@ class ReferenceServiceApplicationTests {
 	}
 
 }
+
