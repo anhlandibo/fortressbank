@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: transaction-service
+  cloud:
+    config:
+      uri: ${SPRING_CLOUD_CONFIG_URI}
+  jpa:
+    hibernate:
+      ddl-auto: update
+
+# JWT Configuration
+jwt:
+  issuer-uri: ${JWT_ISSUER_URI:http://localhost:8888/realms/fortressbank-realm}
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://discovery:8761/eureka
