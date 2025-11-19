@@ -143,3 +143,30 @@ services:
       - "6000:6000"
     networks:
       - internal
+
+  reference-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.services
+      target: reference-service
+      args:
+        - MAVEN_OPTS=-Xmx512m
+    container_name: reference-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://reference-service-db:5432/referencedb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: 123456
+      SPRING_PROFILES_ACTIVE: docker
+      SERVER_PORT: 4003
+      SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+    depends_on:
+      discovery:
+        condition: service_healthy
+      reference-service-db:
+        condition: service_healthy
+      config-server:
+        condition: service_started
+    ports:
+      - "4003:4003"
+    networks:
+      - internal

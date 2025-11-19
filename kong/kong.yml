@@ -23,6 +23,15 @@ services:
     - /accounts
     strip_path: false
 
+- name: reference-service
+  url: http://reference-service:4003
+  routes:
+  - name: reference-service-route
+    paths:
+    - /banks
+    - /products
+    strip_path: false
+
 # ============================================================================
 # RATE LIMITING CONFIGURATION
 # ============================================================================

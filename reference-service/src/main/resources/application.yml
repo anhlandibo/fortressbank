@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: reference-service
+  cloud:
+    config:
+      uri: ${SPRING_CLOUD_CONFIG_URI}
+  jpa:
+    hibernate:
+      ddl-auto: update
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://discovery:8761/eureka
+

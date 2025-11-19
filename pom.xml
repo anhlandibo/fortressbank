@@ -17,6 +17,7 @@
         <module>config-server</module>
         <module>risk-engine</module>
         <module>discovery</module>
+        <module>reference-service</module>
     </modules>
 
     <properties>

@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: 123456
       POSTGRES_DB: userdb
     ports:
-      - "5000:5432"
+      - "5432:5432"
     volumes:
       # This 'userdb_data' is defined in docker-compose.base.yml
       - userdb_data:/var/lib/postgresql/data
@@ -50,6 +50,26 @@ services:
       - internal
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  reference-service-db:
+    image: postgres:16-alpine
+    container_name: reference-service-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: referencedb
+    ports:
+      - "5003:5432"
+    volumes:
+      # This 'referencedb_data' is defined in docker-compose.base.yml
+      - referencedb_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -h localhost"]
       interval: 10s
       timeout: 5s
       retries: 5
