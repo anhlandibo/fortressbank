@@ -2,22 +2,32 @@ package com.uit.accountservice.controller;
 
 import com.uit.accountservice.dto.request.TransferRequest;
 import com.uit.accountservice.dto.request.VerifyTransferRequest;
+import com.uit.accountservice.entity.TransferAuditLog;
+import com.uit.accountservice.mapper.AccountMapper;
+import com.uit.accountservice.repository.AccountRepository;
 import com.uit.accountservice.security.RequireRole;
-import com.uit.accountservice.service.AccountService; // Import AccountService
-import com.uit.accountservice.dto.AccountDto; // Import AccountDto
-import lombok.RequiredArgsConstructor; // Import RequiredArgsConstructor
+import com.uit.accountservice.service.AccountService;
+import com.uit.accountservice.service.TransferAuditService;
+import com.uit.accountservice.dto.AccountDto;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import jakarta.servlet.http.HttpServletRequest;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Map;
-import java.util.List; // Import List
+import java.util.List;
 
 @RestController
 @RequestMapping("/accounts")
-@RequiredArgsConstructor // Add RequiredArgsConstructor for constructor injection
+@RequiredArgsConstructor
 public class AccountController {
     
-    private final AccountService accountService; // Inject AccountService
+    private final AccountService accountService;
+    private final AccountRepository accountRepository;
+    private final AccountMapper accountMapper;
+    private final TransferAuditService auditService;
 
     @GetMapping("/")
     public Map<String, Object> getRoot(HttpServletRequest request) {
@@ -30,19 +40,33 @@ public class AccountController {
     }
     
     @GetMapping("/my-accounts")
-    @RequireRole("user")  // Like requireRole('user') in Express
+    @RequireRole("user")
     public Map<String, Object> getMyAccounts(HttpServletRequest request) {
         @SuppressWarnings("unchecked")
         Map<String, Object> userInfo = (Map<String, Object>) request.getAttribute("userInfo");
-        String userId = (String) userInfo.get("sub"); // Assuming 'sub' contains the userId
+        String userId = (String) userInfo.get("sub");
 
-        List<AccountDto> accounts = accountService.getAccountsByUserId(userId); // Fetch real accounts
+        List<AccountDto> accounts = accountService.getAccountsByUserId(userId);
         
         return Map.of(
             "message", "Your accounts",
             "user", userInfo,
-            "accounts", accounts // Use real accounts
+            "accounts", accounts
         );
+    }
+    
+    /**
+     * Get a specific account by ID with ownership validation.
+     * Users can only access accounts they own.
+     */
+    @GetMapping("/{accountId}")
+    @PreAuthorize("@accountService.isOwner(#accountId, authentication.name)")
+    @RequireRole("user")
+    public ResponseEntity<AccountDto> getAccount(@PathVariable String accountId) {
+        return accountRepository.findById(accountId)
+                .map(accountMapper::toDto)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
     
     @GetMapping("/dashboard")
@@ -55,17 +79,102 @@ public class AccountController {
     }
 
     @PostMapping("/transfers")
+    @PreAuthorize("@accountService.isOwner(#transferRequest.fromAccountId, authentication.name)")
     @RequireRole("user")
     public ResponseEntity<?> handleTransfer(@RequestBody TransferRequest transferRequest, HttpServletRequest request) {
         @SuppressWarnings("unchecked")
         Map<String, Object> userInfo = (Map<String, Object>) request.getAttribute("userInfo");
         String userId = (String) userInfo.get("sub");
-        return ResponseEntity.ok(accountService.handleTransfer(transferRequest, userId));
+        
+        // Extract fraud detection metadata from headers
+        String deviceFingerprint = request.getHeader("X-Device-Fingerprint");
+        String ipAddress = request.getHeader("X-Forwarded-For");
+        if (ipAddress == null) {
+            ipAddress = request.getRemoteAddr();
+        }
+        String location = request.getHeader("X-Location"); // Expected format: "City, Country" or "Country"
+        
+        return ResponseEntity.ok(accountService.handleTransfer(
+                transferRequest, userId, deviceFingerprint, ipAddress, location));
     }
 
     @PostMapping("/verify-transfer")
     @RequireRole("user")
     public ResponseEntity<AccountDto> verifyTransfer(@RequestBody VerifyTransferRequest verifyTransferRequest) {
         return ResponseEntity.ok(accountService.verifyTransfer(verifyTransferRequest));
+    }
+
+    /**
+     * Get audit logs for the current user's transfers.
+     * Users can only see their own transfer history.
+     */
+    @GetMapping("/audit/my-transfers")
+    @RequireRole("user")
+    public ResponseEntity<List<TransferAuditLog>> getMyTransferAudit(HttpServletRequest request) {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> userInfo = (Map<String, Object>) request.getAttribute("userInfo");
+        String userId = (String) userInfo.get("sub");
+        
+        List<TransferAuditLog> auditLogs = auditService.getUserTransferHistory(userId);
+        return ResponseEntity.ok(auditLogs);
+    }
+
+    /**
+     * Get audit logs for a specific account.
+     * Users can only see audit logs for accounts they own.
+     */
+    @GetMapping("/audit/account/{accountId}")
+    @PreAuthorize("@accountService.isOwner(#accountId, authentication.name)")
+    @RequireRole("user")
+    public ResponseEntity<List<TransferAuditLog>> getAccountAuditLogs(@PathVariable String accountId) {
+        List<TransferAuditLog> auditLogs = auditService.getAccountTransferHistory(accountId);
+        return ResponseEntity.ok(auditLogs);
+    }
+
+    /**
+     * Get recent high-value transfers (admin only).
+     * Used for monitoring suspicious activity.
+     */
+    @GetMapping("/audit/high-value")
+    @RequireRole("admin")
+    public ResponseEntity<List<TransferAuditLog>> getHighValueTransfers(
+            @RequestParam(defaultValue = "10000") BigDecimal minAmount,
+            @RequestParam(defaultValue = "24") int hours) {
+        LocalDateTime since = LocalDateTime.now().minusHours(hours);
+        List<TransferAuditLog> auditLogs = auditService.getHighValueTransfers(minAmount, since);
+        return ResponseEntity.ok(auditLogs);
+    }
+
+    /**
+     * Get recent failed transfers (admin only).
+     * Used for security monitoring and fraud detection.
+     */
+    @GetMapping("/audit/failed")
+    @RequireRole("admin")
+    public ResponseEntity<List<TransferAuditLog>> getFailedTransfers(
+            @RequestParam(defaultValue = "24") int hours) {
+        LocalDateTime since = LocalDateTime.now().minusHours(hours);
+        List<TransferAuditLog> auditLogs = auditService.getFailedTransfers(since);
+        return ResponseEntity.ok(auditLogs);
+    }
+
+    /**
+     * Get velocity check for a user (admin only).
+     * Returns count of recent transfers for fraud detection.
+     */
+    @GetMapping("/audit/velocity/{userId}")
+    @RequireRole("admin")
+    public ResponseEntity<Map<String, Object>> getUserVelocity(
+            @PathVariable String userId,
+            @RequestParam(defaultValue = "60") int minutes) {
+        LocalDateTime since = LocalDateTime.now().minusMinutes(minutes);
+        long count = auditService.countRecentTransfers(userId, since);
+        
+        return ResponseEntity.ok(Map.of(
+            "userId", userId,
+            "transferCount", count,
+            "periodMinutes", minutes,
+            "timestamp", LocalDateTime.now()
+        ));
     }
 }

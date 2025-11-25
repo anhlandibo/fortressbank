@@ -3,7 +3,7 @@ package com.uit.userservice.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.GenericGenerator;
+import org.hibernate.annotations.UuidGenerator;
 
 import java.time.LocalDateTime;
 
@@ -22,8 +22,7 @@ import java.time.LocalDateTime;
 public class UserAuditLog {
 
     @Id
-    @GeneratedValue(generator = "uuid2")
-    @GenericGenerator(name = "uuid2", strategy = "uuid2")
+    @UuidGenerator
     @Column(columnDefinition = "VARCHAR(36)", updatable = false)
     private String id;
 

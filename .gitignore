@@ -31,3 +31,5 @@ user-service/target/
 # IntelliJ IDEA files
 .idea/
 *.iml
+
+.tmp
