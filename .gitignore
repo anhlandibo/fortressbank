@@ -33,3 +33,6 @@ user-service/target/
 *.iml
 
 .tmp
+
+# key
+notification-service/src/main/resources/fortress-bank-230b4-firebase-adminsdk-fbsvc-ade09ee686.json

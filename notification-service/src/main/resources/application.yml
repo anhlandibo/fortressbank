@@ -1,9 +1,36 @@
 spring:
   application:
     name: notification-service
+  #  cloud:
+  #    config:
+  #      uri: ${SPRING_CLOUD_CONFIG_URI}
+  datasource:
+    url: jdbc:h2:mem:notification_db_test
+    driver-class-name: org.h2.Driver
+    username: root
+    password:
+    driverClassName: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        format_sql: true
+    show-sql: false
+
+  h2:
+    console:
+      path=/h2-console:
+      enabled: false
+
+  # Disable cloud config for tests
   cloud:
     config:
-      uri: ${SPRING_CLOUD_CONFIG_URI}
+      enabled: false
+    discovery:
+      enabled: false
 
 eureka:
   client:
@@ -15,3 +42,8 @@ textbee:
     key: "d0067ec4-9b8a-49c4-9295-e8120c19a162"
   device:
     id: "68f1c11d6a418a16ec8f483e"
+
+logging:
+  level:
+    com.uit.accountservice: DEBUG
+    org.springframework.security: DEBUG
