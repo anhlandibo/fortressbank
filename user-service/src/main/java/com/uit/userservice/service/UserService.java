@@ -48,6 +48,10 @@ public class UserService {
 
         Response response = keycloak.realm("fortressbank-realm").users().create(userRepresentation);
 
+        if (response.getStatus() == 409) {
+            throw new AppException(ErrorCode.USER_ALREADY_EXISTS);
+        }
+
         if (response.getStatus() != 201) {
             throw new AppException(ErrorCode.USER_CREATION_FAILED);
         }
