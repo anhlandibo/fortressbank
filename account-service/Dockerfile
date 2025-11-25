@@ -1,4 +1,4 @@
-FROM eclipse-temurin:17-jdk-focal as builder
+FROM eclipse-temurin:21-jdk-focal as builder
 WORKDIR /app
 # Copy parent POM first
 COPY pom.xml .
@@ -8,7 +8,7 @@ WORKDIR /app/account-service
 RUN apt-get update && apt-get install -y maven
 RUN mvn clean package -DskipTests -f /app/pom.xml -pl :account-service -am
 
-FROM eclipse-temurin:17-jre-focal
+FROM eclipse-temurin:21-jre-focal
 WORKDIR /app
 COPY --from=builder /app/account-service/target/*.jar app.jar
 EXPOSE 4001

@@ -30,15 +30,15 @@ public class SecurityConfig implements WebMvcConfigurer {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             .csrf(csrf -> csrf.disable())
-            .addFilterBefore(parseUserInfoFilter, UsernamePasswordAuthenticationFilter.class)
+            // .addFilterBefore(parseUserInfoFilter, UsernamePasswordAuthenticationFilter.class)
             .authorizeHttpRequests(auth -> auth
-                .anyRequest().permitAll() // Kong already authenticated
+                .anyRequest().permitAll() // Temporarily disable authentication
             );
         return http.build();
     }
     
     @Override
     public void addInterceptors(@NonNull InterceptorRegistry registry) {
-        registry.addInterceptor(roleCheckInterceptor);
+        // registry.addInterceptor(roleCheckInterceptor); // Temporarily disable role check
     }
 }

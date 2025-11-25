@@ -32,8 +32,8 @@ public class OutboxEvent {
     @Column(name = "event_type", length = 100, nullable = false)
     private String eventType; // 'TransactionCreated', 'BalanceUpdated', etc.
 
-    @Column(nullable = false, columnDefinition = "jsonb")
-    private String payload; // JSON payload
+    @Column(nullable = false, columnDefinition = "TEXT")
+    private String payload; // JSON payload as text
 
     @Column(length = 20, nullable = false)
     @Enumerated(EnumType.STRING)
