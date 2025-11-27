@@ -1,6 +1,7 @@
 package com.uit.transactionservice.controller;
 
 import com.uit.sharedkernel.api.ApiResponse;
+import com.uit.transactionservice.dto.VerifyOTPRequest;
 import com.uit.transactionservice.dto.request.CreateTransferRequest;
 import com.uit.transactionservice.dto.response.TransactionLimitResponse;
 import com.uit.transactionservice.dto.response.TransactionResponse;
@@ -11,6 +12,7 @@ import com.uit.transactionservice.service.TransactionService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -25,28 +27,62 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/transactions")
 @RequiredArgsConstructor
+@Slf4j
 public class TransactionController {
 
     private final TransactionService transactionService;
     private final TransactionLimitService transactionLimitService;
 
     /**
-     * Create a new transfer transaction
+     * Create a new transfer transaction (with OTP)
      * POST /transactions/transfers
      */
     @PostMapping("/transfers")
     @RequireRole("user")
     public ResponseEntity<ApiResponse<TransactionResponse>> createTransfer(
             @Valid @RequestBody CreateTransferRequest request,
+          
             HttpServletRequest httpRequest) {
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> userInfo = (Map<String, Object>) httpRequest.getAttribute("userInfo");
-        String userId = (String) userInfo.get("sub");
+        try {
+            log.info("=== CREATE TRANSFER REQUEST ===");
+            log.info("Request body: {}", request);
+            
+            @SuppressWarnings("unchecked")
+            Map<String, Object> userInfo = (Map<String, Object>) httpRequest.getAttribute("userInfo");
+            String userId = (String) userInfo.get("sub");
+            
+            log.info("User ID from token: {}", userId);
+            log.info("Phone number: 0857311444");
 
-        TransactionResponse response = transactionService.createTransfer(request, userId);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success(response));
+            TransactionResponse response = transactionService.createTransfer(request, userId, "0857311444");
+            
+            log.info("Transfer created successfully: {}", response.getTxId());
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(ApiResponse.success(response));
+                    
+        } catch (Exception e) {
+            log.error("=== CREATE TRANSFER FAILED ===", e);
+            log.error("Error type: {}", e.getClass().getName());
+            log.error("Error message: {}", e.getMessage());
+            if (e.getCause() != null) {
+                log.error("Caused by: {}", e.getCause().getMessage());
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * Verify OTP for transaction
+     * POST /transactions/verify-otp
+     */
+    @PostMapping("/verify-otp")
+    @RequireRole("user")
+    public ResponseEntity<ApiResponse<TransactionResponse>> verifyOTP(
+            @Valid @RequestBody VerifyOTPRequest request) {
+
+        TransactionResponse response = transactionService.verifyOTP(request.getTransactionId(), request.getOtpCode());
+        return ResponseEntity.ok(ApiResponse.success(response));
     }
 
     /**

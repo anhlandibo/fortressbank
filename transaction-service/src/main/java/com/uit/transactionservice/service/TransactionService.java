@@ -5,10 +5,7 @@ import com.uit.transactionservice.dto.request.CreateTransferRequest;
 import com.uit.transactionservice.dto.response.TransactionResponse;
 import com.uit.transactionservice.entity.*;
 import com.uit.transactionservice.mapper.TransactionMapper;
-import com.uit.transactionservice.repository.OutboxEventRepository;
-import com.uit.transactionservice.repository.TransactionFeeRepository;
-import com.uit.transactionservice.repository.TransactionLimitRepository;
-import com.uit.transactionservice.repository.TransactionRepository;
+import com.uit.transactionservice.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -33,40 +30,50 @@ public class TransactionService {
     private final TransactionLimitRepository transactionLimitRepository;
     private final TransactionMapper transactionMapper;
     private final ObjectMapper objectMapper;
+    private final OTPService otpService;
 
     /**
-     * Create a new transfer transaction
+     * Create a new transfer transaction with OTP verification
      */
     @Transactional
-    public TransactionResponse createTransfer(CreateTransferRequest request, String userId) {
-        log.info("Creating transfer from {} to {}", request.getFromAccountId(), request.getToAccountId());
+    public TransactionResponse createTransfer(CreateTransferRequest request, String userId, String phoneNumber) {
+        log.info("Creating transfer from {} to {} with OTP", request.getFromAccountId(), request.getToAccountId());
 
         // 1. Check transaction limit
         checkTransactionLimit(request.getFromAccountId(), request.getAmount());
 
         // 2. Calculate fee
         BigDecimal fee = calculateFee(request.getType(), request.getAmount());
-        BigDecimal totalAmount = request.getAmount().add(fee);
+        // BigDecimal totalAmount = request.getAmount().add(fee);
 
-        // 3. Create transaction with PENDING status
+        // 3. Create transaction with PENDING_OTP status and Saga state
+        String correlationId = UUID.randomUUID().toString();
+        
         Transaction transaction = Transaction.builder()
                 .senderAccountId(request.getFromAccountId())
                 .receiverAccountId(request.getToAccountId())
                 .amount(request.getAmount())
                 .feeAmount(fee)
                 .txType(request.getType())
-                .status(TransactionStatus.PENDING)
+                .status(TransactionStatus.PENDING_OTP)
                 .description(request.getDescription())
+                // Saga Orchestration Fields
+                .correlationId(correlationId)
+                .currentStep(com.uit.transactionservice.entity.SagaStep.STARTED)
                 .build();
 
         transaction = transactionRepository.save(transaction);
-        log.info("Transaction created with ID: {}", transaction.getTxId());
+        log.info("Transaction created with ID: {} - Correlation ID: {} - Status: PENDING_OTP", 
+                transaction.getTxId(), correlationId);
 
-        // 4. Update transaction limit
-        updateTransactionLimit(request.getFromAccountId(), totalAmount);
+        // 4. Generate and save OTP to Redis
+        String otpCode = otpService.generateOTP();
+        otpService.saveOTP(transaction.getTxId(), otpCode, phoneNumber);
+        
+        log.info("OTP generated and saved to Redis for transaction: {}", transaction.getTxId());
 
-        // 5. Create outbox event for TransactionCreated
-        createOutboxEvent(transaction, "TransactionCreated");
+        // 5. Send OTP SMS via event (notification-service will handle)
+        sendOTPNotification(transaction.getTxId(), phoneNumber, otpCode);
 
         return transactionMapper.toResponse(transaction);
     }
@@ -193,12 +200,14 @@ public class TransactionService {
         try {
             Map<String, Object> payload = new HashMap<>();
             payload.put("transactionId", transaction.getTxId());
+            payload.put("correlationId", transaction.getCorrelationId()); // For idempotency
             payload.put("senderAccountId", transaction.getSenderAccountId());
             payload.put("receiverAccountId", transaction.getReceiverAccountId());
             payload.put("amount", transaction.getAmount());
             payload.put("feeAmount", transaction.getFeeAmount());
             payload.put("type", transaction.getTxType());
             payload.put("status", transaction.getStatus());
+            payload.put("currentStep", transaction.getCurrentStep());
             payload.put("timestamp", LocalDateTime.now());
 
             String payloadJson = objectMapper.writeValueAsString(payload);
@@ -213,11 +222,93 @@ public class TransactionService {
                     .build();
 
             outboxEventRepository.save(event);
-            log.info("Outbox event created: {} for transaction: {}", eventType, transaction.getTxId());
+            log.info("Outbox event created: {} for transaction: {} with correlation ID: {}", 
+                    eventType, transaction.getTxId(), transaction.getCorrelationId());
 
         } catch (Exception e) {
             log.error("Failed to create outbox event", e);
             throw new RuntimeException("Failed to create outbox event", e);
         }
+    }
+
+    /**
+     * Send OTP notification via event
+     */
+    private void sendOTPNotification(UUID transactionId, String phoneNumber, String otpCode) {
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("eventType", "OTPGenerated");
+            payload.put("transactionId", transactionId.toString());
+            payload.put("phoneNumber", phoneNumber);
+            payload.put("otpCode", otpCode);
+            payload.put("message", "Your OTP for transaction is: " + otpCode + ". Valid for 5 minutes.");
+            payload.put("timestamp", LocalDateTime.now().toString());
+
+            String payloadJson = objectMapper.writeValueAsString(payload);
+
+            OutboxEvent event = OutboxEvent.builder()
+                    .aggregateId(transactionId.toString())
+                    .aggregateType("Transaction")
+                    .eventType("OTPGenerated")
+                    .payload(payloadJson)
+                    .status(OutboxEventStatus.PENDING)
+                    .build();
+
+            outboxEventRepository.save(event);
+            log.info("OTP notification event created for transaction: {}", transactionId);
+
+        } catch (Exception e) {
+            log.error("Failed to create OTP notification event", e);
+            // Don't throw exception, continue with transaction
+        }
+    }
+
+    /**
+     * Verify OTP and complete transaction
+     */
+    @Transactional
+    public TransactionResponse verifyOTP(UUID transactionId, String otpCode) {
+        log.info("Verifying OTP for transaction: {}", transactionId);
+
+        // 1. Find transaction
+        Transaction transaction = transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new RuntimeException("Transaction not found"));
+
+        // 2. Check transaction status
+        if (transaction.getStatus() != TransactionStatus.PENDING_OTP) {
+            throw new RuntimeException("Transaction is not pending OTP verification");
+        }
+
+        // 3. Verify OTP using OTPService
+        OTPService.OTPVerificationResult result = otpService.verifyOTP(transactionId, otpCode);
+
+        // 4. Handle verification result
+        if (!result.isSuccess()) {
+            if (result.getMessage().contains("expired")) {
+                transaction.setStatus(TransactionStatus.OTP_EXPIRED);
+                transactionRepository.save(transaction);
+            } else if (result.getMessage().contains("Maximum")) {
+                transaction.setStatus(TransactionStatus.FAILED);
+                transactionRepository.save(transaction);
+            }
+            throw new RuntimeException(result.getMessage());
+        }
+
+        // 5. Update transaction status and Saga step
+        transaction.setStatus(TransactionStatus.PENDING);
+        transaction.setCurrentStep(com.uit.transactionservice.entity.SagaStep.OTP_VERIFIED);
+        transaction = transactionRepository.save(transaction);
+        log.info("OTP verified successfully - Transaction: {} moved to step: OTP_VERIFIED", transactionId);
+
+        // 6. Update transaction limit
+        BigDecimal totalAmount = transaction.getAmount().add(transaction.getFeeAmount());
+        updateTransactionLimit(transaction.getSenderAccountId(), totalAmount);
+
+        // 7. Create outbox event for TransactionCreated (Saga command to Account Service)
+        // This will trigger DebitAccount command
+        createOutboxEvent(transaction, "TransactionCreated");
+        log.info("Saga orchestration started - Correlation ID: {}", transaction.getCorrelationId());
+
+        return transactionMapper.toResponse(transaction);
     }
 }

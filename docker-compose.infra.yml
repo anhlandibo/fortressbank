@@ -74,10 +74,30 @@ services:
       timeout: 5s
       retries: 5
 
+  transaction-service-db:
+    image: postgres:16-alpine
+    container_name: transaction-service-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: transactiondb
+    ports:
+      - "5433:5432"
+    volumes:
+      # This 'transactiondb_data' is defined in docker-compose.base.yml
+      - transactiondb_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -h localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   keycloak:
     image: quay.io/keycloak/keycloak:20.0
     container_name: fortressbank-keycloak
-    command: 
+    command:
       - start-dev
       - --import-realm
       - --health-enabled=true
@@ -111,6 +131,23 @@ services:
       start_period: 300s
     networks:
       - internal
+
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: fortress-rabbitmq
+    ports:
+      - "5672:5672" # Application port
+      - "15672:15672" # Management UI port
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   kong:
     build:

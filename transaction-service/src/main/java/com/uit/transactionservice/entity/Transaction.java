@@ -12,7 +12,9 @@ import java.time.LocalDateTime;
 @Table(name = "transactions", indexes = {
     @Index(name = "idx_sender_date", columnList = "sender_account_id,created_at"),
     @Index(name = "idx_receiver_date", columnList = "receiver_account_id,created_at"),
-    @Index(name = "idx_status_date", columnList = "status,created_at")
+    @Index(name = "idx_status_date", columnList = "status,created_at"),
+    @Index(name = "idx_correlation_id", columnList = "correlation_id"),
+    @Index(name = "idx_current_step", columnList = "current_step")
 })
 @Getter
 @Setter
@@ -49,6 +51,35 @@ public class Transaction {
     @Enumerated(EnumType.STRING)
     private TransactionStatus status;
 
+    // ========== Saga Orchestration Fields ==========
+    
+    /**
+     * Unique identifier for the entire saga workflow
+     * Used for idempotency and distributed tracing
+     */
+    @Column(name = "correlation_id", unique = true, length = 255)
+    private String correlationId;
+
+    /**
+     * Current step in the saga state machine
+     * STARTED -> OTP_VERIFIED -> DEBITED -> CREDITED -> COMPLETED
+     * ROLLING_BACK -> ROLLED_BACK (on failure)
+     */
+    @Column(name = "current_step", length = 50)
+    @Enumerated(EnumType.STRING)
+    private SagaStep currentStep;
+
+    /**
+     * Step where failure occurred (for rollback/debugging)
+     */
+    @Column(name = "failure_step", length = 50)
+    private String failureStep;
+
+    @Column(name = "failure_reason", columnDefinition = "TEXT")
+    private String failureReason;
+
+    // ========== Timestamps ==========
+    
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -59,7 +90,4 @@ public class Transaction {
 
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
-
-    @Column(name = "failure_reason", columnDefinition = "TEXT")
-    private String failureReason;
 }

@@ -19,6 +19,38 @@ services:
     networks:
       - transaction-network
 
+  # Redis
+  redis:
+    image: redis:6
+    container_name: transaction-redis
+    ports:
+      - "6380:6379"
+    networks:
+      - transaction-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: transaction-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - transaction-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # Transaction Service
   transaction-service:
     build:
@@ -33,10 +65,20 @@ services:
       SERVER_PORT: 4003
       SPRING_CLOUD_CONFIG_ENABLED: "false"
       EUREKA_CLIENT_ENABLED: "false"
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: guest
+      SPRING_RABBITMQ_PASSWORD: guest
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
     volumes:
       - maven-cache:/root/.m2
     depends_on:
       transaction-service-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     ports:
       - "4003:4003"
