@@ -23,7 +23,7 @@ jobs:
         cache: 'maven'
 
     - name: Run Tests with Maven
-      run: mvn clean test jacoco:report
+      run: mvn clean test jacoco:report -fae
 
     - name: Upload Coverage Report
       uses: actions/upload-artifact@v4
