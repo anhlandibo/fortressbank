@@ -33,3 +33,4 @@ user-service/target/
 *.iml
 
 .tmp
+.DS_Store

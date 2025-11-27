@@ -1,6 +1,6 @@
 spring:
   datasource:
-    url: jdbc:h2:mem:testdb
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
     driver-class-name: org.h2.Driver
     username: sa
     password: 
@@ -13,6 +13,11 @@ spring:
         dialect: org.hibernate.dialect.H2Dialect
         format_sql: true
     show-sql: false
+    defer-datasource-initialization: true
+  
+  sql:
+    init:
+      mode: never
   
   h2:
     console:
@@ -22,8 +27,17 @@ spring:
   cloud:
     config:
       enabled: false
+      fail-fast: false
+    bootstrap:
+      enabled: false
     discovery:
       enabled: false
+
+  # Disable Redis auto-config for tests
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
 
 eureka:
   client:

@@ -1,0 +1,10 @@
+spring:
+  application:
+    name: account-service
+  cloud:
+    config:
+      enabled: false
+      fail-fast: false
+    bootstrap:
+      enabled: false
+
