@@ -7,7 +7,7 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://keycloak:8080/realms/fortressbank-realm
+          jwk-set-uri: http://keycloak:8080/realms/fortressbank-realm/protocol/openid-connect/certs
           
   datasource:
     url: ${SPRING_DATASOURCE_URL}
