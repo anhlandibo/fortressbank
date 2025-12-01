@@ -17,7 +17,8 @@ spring:
     locations: classpath:db/migration
     baseline-version: 0
   rabbitmq:
-    host: host.docker.internal
+    # host: host.docker.internal
+    host: localhost
     port: 5672
     username: guest
     password: guest
@@ -30,6 +31,12 @@ spring:
 # JWT Configuration
 jwt:
   issuer-uri: ${JWT_ISSUER_URI:http://localhost:8888/realms/fortressbank-realm}
+
+# Service Communication Configuration
+services:
+  account-service:
+    url: ${ACCOUNT_SERVICE_URL:http://account-service:4001}
+    timeout: 5000 # 5 seconds timeout for sync calls
 
 eureka:
   client:

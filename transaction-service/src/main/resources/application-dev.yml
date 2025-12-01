@@ -11,6 +11,11 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:123456}
     driver-class-name: org.postgresql.Driver
 
+  data:
+    redis:
+      host: localhost
+      port: 6380
+
   jpa:
     hibernate:
       ddl-auto: update
@@ -30,6 +35,11 @@ spring:
       enabled: ${SPRING_CLOUD_CONFIG_ENABLED:false}
       uri: ${SPRING_CLOUD_CONFIG_URI:http://localhost:8889}
       fail-fast: false
+
+  services:
+    account-service:
+    url: ${ACCOUNT_SERVICE_URL:http://localhost:4001}
+    timeout: 5000 # 5 seconds timeout for sync calls
 
 # JWT Configuration
 jwt:

@@ -4,10 +4,10 @@ package com.uit.transactionservice.entity;
  * Saga State Machine Steps for Transaction Processing
  * 
  * Flow:
- * STARTED -> OTP_VERIFIED -> DEBITED -> CREDITED -> COMPLETED
+ * STARTED -> OTP_VERIFIED -> DEBIT_COMPLETED -> CREDIT_COMPLETED -> COMPLETED
  * 
  * On Failure:
- * (Any Step) -> ROLLING_BACK -> ROLLED_BACK
+ * (Any Step) -> FAILED or ROLLBACK_COMPLETED/ROLLBACK_FAILED
  */
 public enum SagaStep {
     /**
@@ -21,27 +21,47 @@ public enum SagaStep {
     OTP_VERIFIED,
     
     /**
-     * Amount debited from sender account
+     * Amount debited from sender account (Step 1 complete)
      */
-    DEBITED,
+    DEBIT_COMPLETED,
     
     /**
-     * Amount credited to receiver account
+     * Amount credited to receiver account (Step 2 complete)
      */
-    CREDITED,
+    CREDIT_COMPLETED,
     
     /**
-     * Transaction completed successfully
+     * External transfer event published to message queue (for interbank transfers)
+     */
+    EXTERNAL_INITIATED,
+    
+    /**
+     * External transfer completed successfully (callback received)
+     */
+    EXTERNAL_COMPLETED,
+    
+    /**
+     * External transfer failed (callback received)
+     */
+    EXTERNAL_FAILED,
+    
+    /**
+     * Transaction completed successfully (both debit and credit done)
      */
     COMPLETED,
     
     /**
-     * Compensating transaction in progress (rollback)
+     * Rollback completed successfully (compensating transaction)
      */
-    ROLLING_BACK,
+    ROLLBACK_COMPLETED,
     
     /**
-     * Compensating transaction completed (rollback successful)
+     * Rollback failed - requires manual intervention
      */
-    ROLLED_BACK
+    ROLLBACK_FAILED,
+    
+    /**
+     * Transaction failed
+     */
+    FAILED
 }

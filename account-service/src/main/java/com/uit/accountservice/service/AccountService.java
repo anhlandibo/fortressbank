@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -34,7 +35,7 @@ import java.util.stream.Collectors;
 public class AccountService {
 
     // Hardcoded phone number for SMS OTPs - FOR DEVELOPMENT ONLY
-    public static final String HARDCODED_PHONE_NUMBER = "+84382505668";
+    public static final String HARDCODED_PHONE_NUMBER = "+84857311444";
 
     private final AccountRepository accountRepository;
     private final AccountMapper accountMapper;
@@ -45,6 +46,13 @@ public class AccountService {
 
     public List<AccountDto> getAccountsByUserId(String userId) {
         return accountRepository.findByUserId(userId)
+                .stream()
+                .map(accountMapper::toDto)
+                .collect(Collectors.toList());
+    }
+
+    public List<AccountDto> getAllAccounts() {
+        return accountRepository.findAll()
                 .stream()
                 .map(accountMapper::toDto)
                 .collect(Collectors.toList());
@@ -326,5 +334,163 @@ public class AccountService {
             );
             throw e;
         }
+    }
+
+    /**
+     * Debit (subtract) amount from an account.
+     * Called by transaction-service for synchronous balance updates.
+     * Uses pessimistic locking to prevent race conditions.
+     */
+    @Transactional
+    public com.uit.accountservice.dto.response.AccountBalanceResponse debitAccount(
+            String accountId, 
+            com.uit.accountservice.dto.request.AccountBalanceRequest request) {
+        
+        log.info("Debiting account {} - Amount: {} - Transaction: {}", 
+                accountId, request.getAmount(), request.getTransactionId());
+
+        // Find account WITH PESSIMISTIC LOCK to prevent concurrent modifications
+        Account account = accountRepository.findByIdWithLock(accountId)
+                .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND, 
+                        "Account not found: " + accountId));
+
+        BigDecimal oldBalance = account.getBalance();
+
+        // Check sufficient balance (double-check after acquiring lock)
+        if (account.getBalance().compareTo(request.getAmount()) < 0) {
+            log.warn("Insufficient balance for account {} - Required: {} - Available: {}", 
+                    accountId, request.getAmount(), account.getBalance());
+            throw new AppException(ErrorCode.INSUFFICIENT_FUNDS, 
+                    "Insufficient balance in account: " + accountId);
+        }
+
+        // Deduct amount atomically
+        BigDecimal newBalance = account.getBalance().subtract(request.getAmount());
+        account.setBalance(newBalance);
+        accountRepository.save(account);
+
+        log.info("Debit successful - Account: {} - Old balance: {} - New balance: {} - TxID: {}", 
+                accountId, oldBalance, newBalance, request.getTransactionId());
+
+        return com.uit.accountservice.dto.response.AccountBalanceResponse.builder()
+                .accountId(accountId)
+                .oldBalance(oldBalance)
+                .newBalance(newBalance)
+                .transactionId(request.getTransactionId())
+                .success(true)
+                .message("Debit successful")
+                .build();
+    }
+
+    /**
+     * Credit (add) amount to an account.
+     * Called by transaction-service for synchronous balance updates.
+     * Uses pessimistic locking to prevent race conditions.
+     */
+    @Transactional
+    public com.uit.accountservice.dto.response.AccountBalanceResponse creditAccount(
+            String accountId, 
+            com.uit.accountservice.dto.request.AccountBalanceRequest request) {
+        
+        log.info("Crediting account {} - Amount: {} - Transaction: {}", 
+                accountId, request.getAmount(), request.getTransactionId());
+
+        // Find account WITH PESSIMISTIC LOCK to prevent concurrent modifications
+        Account account = accountRepository.findByIdWithLock(accountId)
+                .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND, 
+                        "Account not found: " + accountId));
+
+        BigDecimal oldBalance = account.getBalance();
+
+        // Add amount atomically
+        BigDecimal newBalance = account.getBalance().add(request.getAmount());
+        account.setBalance(newBalance);
+        accountRepository.save(account);
+
+        log.info("Credit successful - Account: {} - Old balance: {} - New balance: {} - TxID: {}", 
+                accountId, oldBalance, newBalance, request.getTransactionId());
+
+        return com.uit.accountservice.dto.response.AccountBalanceResponse.builder()
+                .accountId(accountId)
+                .oldBalance(oldBalance)
+                .newBalance(newBalance)
+                .transactionId(request.getTransactionId())
+                .success(true)
+                .message("Credit successful")
+                .build();
+    }
+
+    /**
+     * Execute internal transfer atomically in a single transaction.
+     * Both debit and credit happen together - either both succeed or both fail.
+     * Uses pessimistic locking on BOTH accounts to prevent race conditions.
+     */
+    @Transactional
+    public com.uit.accountservice.dto.response.InternalTransferResponse executeInternalTransfer(
+            com.uit.accountservice.dto.request.InternalTransferRequest request) {
+        
+        log.info("Executing internal transfer - From: {} To: {} Amount: {} TxID: {}", 
+                request.getFromAccountId(), request.getToAccountId(), 
+                request.getAmount(), request.getTransactionId());
+
+        // Lock BOTH accounts in deterministic order to prevent deadlock
+        List<String> accountIds = List.of(request.getFromAccountId(), request.getToAccountId());
+        List<Account> accounts = accountRepository.findByIdInWithLock(accountIds);
+        
+        if (accounts.size() != 2) {
+            throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND, 
+                    "One or both accounts not found");
+        }
+        
+        // Identify sender and receiver
+        Account fromAccount = accounts.stream()
+                .filter(a -> a.getAccountId().equals(request.getFromAccountId()))
+                .findFirst()
+                .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND, 
+                        "Sender account not found"));
+        
+        Account toAccount = accounts.stream()
+                .filter(a -> a.getAccountId().equals(request.getToAccountId()))
+                .findFirst()
+                .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND, 
+                        "Receiver account not found"));
+        
+        // Store old balances for response
+        BigDecimal fromOldBalance = fromAccount.getBalance();
+        BigDecimal toOldBalance = toAccount.getBalance();
+        
+        // Check sufficient balance
+        if (fromAccount.getBalance().compareTo(request.getAmount()) < 0) {
+            log.warn("Insufficient balance - Account: {} Required: {} Available: {}", 
+                    request.getFromAccountId(), request.getAmount(), fromAccount.getBalance());
+            throw new AppException(ErrorCode.INSUFFICIENT_FUNDS, 
+                    "Insufficient balance in sender account");
+        }
+        
+        // Execute transfer atomically
+        fromAccount.setBalance(fromAccount.getBalance().subtract(request.getAmount()));
+        toAccount.setBalance(toAccount.getBalance().add(request.getAmount()));
+        
+        // Save both accounts (within same transaction)
+        accountRepository.save(fromAccount);
+        accountRepository.save(toAccount);
+        
+        log.info("Internal transfer completed - TxID: {} - Sender: {} ({} → {}) - Receiver: {} ({} → {})", 
+                request.getTransactionId(),
+                request.getFromAccountId(), fromOldBalance, fromAccount.getBalance(),
+                request.getToAccountId(), toOldBalance, toAccount.getBalance());
+        
+        return com.uit.accountservice.dto.response.InternalTransferResponse.builder()
+                .transactionId(request.getTransactionId())
+                .fromAccountId(request.getFromAccountId())
+                .fromAccountOldBalance(fromOldBalance)
+                .fromAccountNewBalance(fromAccount.getBalance())
+                .toAccountId(request.getToAccountId())
+                .toAccountOldBalance(toOldBalance)
+                .toAccountNewBalance(toAccount.getBalance())
+                .amount(request.getAmount())
+                .success(true)
+                .message("Internal transfer completed successfully")
+                .build();
     }
 }

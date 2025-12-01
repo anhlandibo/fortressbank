@@ -1,10 +1,17 @@
 package com.uit.transactionservice.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uit.transactionservice.client.AccountServiceClient;
+import com.uit.transactionservice.client.dto.AccountBalanceResponse;
+import com.uit.transactionservice.client.dto.InternalTransferResponse;
 import com.uit.transactionservice.dto.request.CreateTransferRequest;
 import com.uit.transactionservice.dto.response.TransactionResponse;
 import com.uit.transactionservice.entity.*;
+import com.uit.transactionservice.event.ExternalTransferInitiatedEvent;
+import com.uit.transactionservice.exception.AccountServiceException;
+import com.uit.transactionservice.exception.InsufficientBalanceException;
 import com.uit.transactionservice.mapper.TransactionMapper;
+import com.uit.transactionservice.publisher.ExternalTransferPublisher;
 import com.uit.transactionservice.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,7 +38,9 @@ public class TransactionService {
     private final TransactionMapper transactionMapper;
     private final ObjectMapper objectMapper;
     private final OTPService otpService;
-
+    private final AccountServiceClient accountServiceClient;
+    private final ExternalTransferPublisher externalTransferPublisher;
+    
     /**
      * Create a new transfer transaction with OTP verification
      */
@@ -61,13 +70,15 @@ public class TransactionService {
                 .correlationId(correlationId)
                 .currentStep(com.uit.transactionservice.entity.SagaStep.STARTED)
                 .build();
-
         transaction = transactionRepository.save(transaction);
+        log.info("transaction " + transaction);
+
         log.info("Transaction created with ID: {} - Correlation ID: {} - Status: PENDING_OTP", 
                 transaction.getTxId(), correlationId);
 
         // 4. Generate and save OTP to Redis
         String otpCode = otpService.generateOTP();
+        log.info("Generated OTP Code: " + otpCode); // For development only
         otpService.saveOTP(transaction.getTxId(), otpCode, phoneNumber);
         
         log.info("OTP generated and saved to Redis for transaction: {}", transaction.getTxId());
@@ -264,7 +275,7 @@ public class TransactionService {
     }
 
     /**
-     * Verify OTP and complete transaction
+     * Verify OTP and route to appropriate transfer handler
      */
     @Transactional
     public TransactionResponse verifyOTP(UUID transactionId, String otpCode) {
@@ -274,6 +285,7 @@ public class TransactionService {
         Transaction transaction = transactionRepository.findById(transactionId)
                 .orElseThrow(() -> new RuntimeException("Transaction not found"));
 
+       
         // 2. Check transaction status
         if (transaction.getStatus() != TransactionStatus.PENDING_OTP) {
             throw new RuntimeException("Transaction is not pending OTP verification");
@@ -294,21 +306,244 @@ public class TransactionService {
             throw new RuntimeException(result.getMessage());
         }
 
-        // 5. Update transaction status and Saga step
+        // 5. Update transaction status to PENDING (OTP verified, processing payment)
         transaction.setStatus(TransactionStatus.PENDING);
-        transaction.setCurrentStep(com.uit.transactionservice.entity.SagaStep.OTP_VERIFIED);
+        transaction.setCurrentStep(SagaStep.OTP_VERIFIED);
         transaction = transactionRepository.save(transaction);
-        log.info("OTP verified successfully - Transaction: {} moved to step: OTP_VERIFIED", transactionId);
+        log.info("OTP verified successfully - Transaction: {} moved to PENDING status", transactionId);
 
-        // 6. Update transaction limit
+        // 6. Route to appropriate handler based on transfer type
+        log.info("transaction type:" + transaction.getTxType() );
+        if (transaction.isInternalTransfer()) {
+            return processInternalTransfer(transaction);
+        } else {
+            return processExternalTransfer(transaction);
+        }
+    }
+
+    /**
+     * Process INTERNAL transfer (within FortressBank) - SYNCHRONOUS
+     * Uses atomic endpoint for guaranteed consistency
+     */
+    private TransactionResponse processInternalTransfer(Transaction transaction) {
+        log.info("Processing INTERNAL transfer - TxID: {}", transaction.getTxId());
+
         BigDecimal totalAmount = transaction.getAmount().add(transaction.getFeeAmount());
-        updateTransactionLimit(transaction.getSenderAccountId(), totalAmount);
+        
+        try {
+            // Use atomic internal transfer endpoint (recommended approach)
+            log.info("Executing atomic internal transfer - From: {} To: {} Amount: {}", 
+                    transaction.getSenderAccountId(), 
+                    transaction.getReceiverAccountId(), 
+                    totalAmount);
+            
+            InternalTransferResponse transferResponse = accountServiceClient.executeInternalTransfer(
+                    transaction.getSenderAccountId(),
+                    transaction.getReceiverAccountId(),
+                    totalAmount,
+                    transaction.getTxId().toString(),
+                    transaction.getDescription()
+            );
 
-        // 7. Create outbox event for TransactionCreated (Saga command to Account Service)
-        // This will trigger DebitAccount command
-        createOutboxEvent(transaction, "TransactionCreated");
-        log.info("Saga orchestration started - Correlation ID: {}", transaction.getCorrelationId());
+            // Update transaction with success
+            transaction.setCurrentStep(SagaStep.COMPLETED);
+            transaction.setStatus(TransactionStatus.SUCCESS);
+            transaction.setCompletedAt(LocalDateTime.now());
+            transaction = transactionRepository.save(transaction);
 
-        return transactionMapper.toResponse(transaction);
+            // Update transaction limit
+            updateTransactionLimit(transaction.getSenderAccountId(), totalAmount);
+            
+            // Send success notification ASYNCHRONOUSLY (non-critical)
+            sendTransactionNotification(transaction, "TransactionCompleted", true);
+            
+            log.info("Internal transfer completed - TxID: {} - Sender new balance: {} - Receiver new balance: {}",
+                    transaction.getTxId(), 
+                    transferResponse.getFromAccountNewBalance(),
+                    transferResponse.getToAccountNewBalance());
+            
+            return transactionMapper.toResponse(transaction);
+
+        } catch (InsufficientBalanceException e) {
+            // Business logic error: insufficient balance
+            log.error("Internal transfer {} failed: Insufficient balance", transaction.getTxId(), e);
+            transaction.setStatus(TransactionStatus.FAILED);
+            transaction.setCurrentStep(SagaStep.FAILED);
+            transaction.setFailureReason("Insufficient balance");
+            transactionRepository.save(transaction);
+            
+            sendTransactionNotification(transaction, "TransactionFailed", false);
+            throw new RuntimeException("Insufficient balance in sender account", e);
+
+        } catch (AccountServiceException e) {
+            // Technical error: account service unavailable or error
+            log.error("Internal transfer {} failed: Account service error", transaction.getTxId(), e);
+            transaction.setStatus(TransactionStatus.FAILED);
+            transaction.setCurrentStep(SagaStep.FAILED);
+            transaction.setFailureReason("Account service error: " + e.getMessage());
+            transactionRepository.save(transaction);
+            
+            sendTransactionNotification(transaction, "TransactionFailed", false);
+            throw new RuntimeException("Failed to process internal transfer: " + e.getMessage(), e);
+
+        } catch (Exception e) {
+            // Unexpected error
+            log.error("Unexpected error during internal transfer: {}", transaction.getTxId(), e);
+            transaction.setStatus(TransactionStatus.FAILED);
+            transaction.setCurrentStep(SagaStep.FAILED);
+            transaction.setFailureReason("Unexpected error: " + e.getMessage());
+            transactionRepository.save(transaction);
+            
+            sendTransactionNotification(transaction, "TransactionFailed", false);
+            throw new RuntimeException("Unexpected error during transfer", e);
+        }
+    }
+
+    /**
+     * Process EXTERNAL transfer (to another bank) - ASYNCHRONOUS via RabbitMQ
+     * Only debits sender account immediately, publishes event to MQ, credit happens later via callback
+     */
+    private TransactionResponse processExternalTransfer(Transaction transaction) {
+        log.info("Processing EXTERNAL transfer - TxID: {} - To Bank: {}", 
+                transaction.getTxId(), transaction.getDestinationBankCode());
+
+        BigDecimal totalAmount = transaction.getAmount().add(transaction.getFeeAmount());
+        
+        try {
+            // Step 1: Debit sender account first (sync)
+            log.info("Step 1: Debiting sender account {} - Amount: {}", 
+                    transaction.getSenderAccountId(), totalAmount);
+            
+            AccountBalanceResponse debitResponse = accountServiceClient.debitAccount(
+                    transaction.getSenderAccountId(),
+                    totalAmount,
+                    transaction.getTxId().toString(),
+                    "External transfer to " + transaction.getDestinationBankCode()
+            );
+            
+            transaction.setCurrentStep(SagaStep.DEBIT_COMPLETED);
+            transaction = transactionRepository.save(transaction);
+            log.info("Debit completed - New sender balance: {}", debitResponse.getNewBalance());
+
+            // Step 2: Publish external transfer event to RabbitMQ (async)
+            log.info("Step 2: Publishing external transfer event to message queue");
+            
+            ExternalTransferInitiatedEvent event = ExternalTransferInitiatedEvent.builder()
+                    .transactionId(transaction.getTxId().toString())
+                    .sourceAccountNumber(transaction.getSenderAccountId())
+                    .sourceBankCode("FORTRESS")
+                    .destinationAccountNumber(transaction.getReceiverAccountId())
+                    .destinationBankCode(transaction.getDestinationBankCode())
+                    .amount(transaction.getAmount())
+                    .description(transaction.getDescription())
+                    .timestamp(LocalDateTime.now())
+                    .build();
+
+            externalTransferPublisher.publishExternalTransferInitiated(event);
+            
+            // Update transaction status - waiting for callback
+            transaction.setCurrentStep(SagaStep.EXTERNAL_INITIATED);
+            transaction.setStatus(TransactionStatus.PENDING);  // Still pending until callback
+            transaction = transactionRepository.save(transaction);
+
+            log.info("External transfer event published to MQ - TxID: {} - Status: PENDING", 
+                    transaction.getTxId());
+
+            // Update transaction limit
+            updateTransactionLimit(transaction.getSenderAccountId(), totalAmount);
+
+            // Send notification that transfer is being processed
+            sendTransactionNotification(transaction, "ExternalTransferInitiated", false);
+            
+            return transactionMapper.toResponse(transaction);
+
+        } catch (InsufficientBalanceException e) {
+            log.error("External transfer {} failed: Insufficient balance", transaction.getTxId(), e);
+            transaction.setStatus(TransactionStatus.FAILED);
+            transaction.setCurrentStep(SagaStep.FAILED);
+            transaction.setFailureReason("Insufficient balance");
+            transactionRepository.save(transaction);
+            
+            sendTransactionNotification(transaction, "TransactionFailed", false);
+            throw new RuntimeException("Insufficient balance in sender account", e);
+
+        } catch (AccountServiceException e) {
+            // Handle partial failure - need rollback
+            log.error("Transaction {} failed during account service call", transaction.getTxId(), e);
+            
+            // If debit succeeded but credit failed, rollback the debit
+            if (transaction.getCurrentStep() == SagaStep.DEBIT_COMPLETED) {
+                log.warn("Rolling back debit for transaction {}", transaction.getTxId());
+                try {
+                    accountServiceClient.rollbackDebit(
+                            transaction.getSenderAccountId(),
+                            totalAmount,
+                            transaction.getTxId().toString()
+                    );
+                    transaction.setCurrentStep(SagaStep.ROLLBACK_COMPLETED);
+                    log.info("Rollback completed for transaction {}", transaction.getTxId());
+                } catch (Exception rollbackError) {
+                    log.error("CRITICAL: Rollback failed for transaction {} - Manual intervention required!", 
+                            transaction.getTxId(), rollbackError);
+                    transaction.setCurrentStep(SagaStep.ROLLBACK_FAILED);
+                }
+            }
+            
+            transaction.setStatus(TransactionStatus.FAILED);
+            transaction.setFailureReason(e.getMessage());
+            transactionRepository.save(transaction);
+            
+            // Send failure notification asynchronously
+            sendTransactionNotification(transaction, "TransactionFailed", false);
+            
+            throw new RuntimeException("Transaction failed: " + e.getMessage(), e);
+
+        } catch (Exception e) {
+            // Unexpected error
+            log.error("Unexpected error during transaction {}", transaction.getTxId(), e);
+            transaction.setStatus(TransactionStatus.FAILED);
+            transaction.setCurrentStep(SagaStep.FAILED);
+            transaction.setFailureReason("System error: " + e.getMessage());
+            transactionRepository.save(transaction);
+            
+            // Send failure notification asynchronously
+            sendTransactionNotification(transaction, "TransactionFailed", false);
+            
+            throw new RuntimeException("Transaction failed due to system error", e);
+        }
+    }
+
+    /**
+     * Send transaction notification asynchronously (non-blocking)
+     */
+    private void sendTransactionNotification(Transaction transaction, String eventType, boolean success) {
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("transactionId", transaction.getTxId().toString());
+            payload.put("senderAccountId", transaction.getSenderAccountId());
+            payload.put("receiverAccountId", transaction.getReceiverAccountId());
+            payload.put("amount", transaction.getAmount());
+            payload.put("status", transaction.getStatus().toString());
+            payload.put("success", success);
+            payload.put("message", success ? "Transaction completed successfully" : "Transaction failed: " + transaction.getFailureReason());
+            payload.put("timestamp", LocalDateTime.now().toString());
+
+            String payloadJson = objectMapper.writeValueAsString(payload);
+
+            OutboxEvent event = OutboxEvent.builder()
+                    .aggregateId(transaction.getTxId().toString())
+                    .aggregateType("Transaction")
+                    .eventType(eventType)
+                    .payload(payloadJson)
+                    .status(OutboxEventStatus.PENDING)
+                    .build();
+
+            outboxEventRepository.save(event);
+            log.info("Notification event {} created for transaction: {}", eventType, transaction.getTxId());
+
+        } catch (Exception e) {
+            log.error("Failed to create notification event - non-critical", e);
+            // Don't throw exception, notification is non-critical
+        }
     }
 }

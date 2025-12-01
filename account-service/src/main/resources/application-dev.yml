@@ -1,0 +1,35 @@
+server:
+  port: ${SERVER_PORT:4001}
+
+spring:
+  application:
+    name: account-service
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/userdb
+    username: postgres
+    password: 123456
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update # In dev, it's fine to let hibernate create/update the schema
+    show-sql: true
+
+  cloud:
+    config:
+      enabled: false # Disable config server for dev profile
+
+# JWT Configuration
+jwt:
+  issuer-uri: http://localhost:8888/realms/fortressbank-realm
+
+# Eureka Configuration
+eureka:
+  client:
+    enabled: false # Disable eureka for dev profile
+
+# Logging
+logging:
+  level:
+    com.uit.accountservice: DEBUG

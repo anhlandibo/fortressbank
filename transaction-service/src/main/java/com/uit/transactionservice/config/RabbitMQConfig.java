@@ -49,27 +49,30 @@ public class RabbitMQConfig {
                 .build();
     }
 
-    /**
-     * Bind Account Queue to Exchange
-     */
-    @Bean
-    public Binding accountBinding(Queue accountQueue, TopicExchange transactionExchange) {
-        return BindingBuilder
-                .bind(accountQueue)
-                .to(transactionExchange)
-                .with("transaction.*");
-    }
 
-    /**
-     * Bind Notification Queue to Exchange
-     */
-    @Bean
-    public Binding notificationBinding(Queue notificationQueue, TopicExchange transactionExchange) {
+        /**
+         * Bind Account Queue to Exchange
+         */
+        @Bean
+        public Binding accountBinding(@org.springframework.beans.factory.annotation.Qualifier("accountQueue") Queue accountQueue,
+                      @org.springframework.beans.factory.annotation.Qualifier("transactionExchange") TopicExchange transactionExchange) {
         return BindingBuilder
-                .bind(notificationQueue)
-                .to(transactionExchange)
-                .with("transaction.*");
-    }
+            .bind(accountQueue)
+            .to(transactionExchange)
+            .with("transaction.*");
+        }
+
+        /**
+         * Bind Notification Queue to Exchange
+         */
+        @Bean
+        public Binding notificationBinding(@org.springframework.beans.factory.annotation.Qualifier("notificationQueue") Queue notificationQueue,
+                       @org.springframework.beans.factory.annotation.Qualifier("transactionExchange") TopicExchange transactionExchange) {
+        return BindingBuilder
+            .bind(notificationQueue)
+            .to(transactionExchange)
+            .with("transaction.*");
+        }
 
     /**
      * JSON Message Converter

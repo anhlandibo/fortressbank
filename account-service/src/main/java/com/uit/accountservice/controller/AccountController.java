@@ -177,4 +177,80 @@ public class AccountController {
             "timestamp", LocalDateTime.now()
         ));
     }
+
+    /**
+     * Debit (subtract) amount from an account.
+     * Called synchronously by transaction-service.
+     * No authentication required - internal service call.
+     */
+    @PostMapping("/{accountId}/debit")
+    public ResponseEntity<?> debitAccount(
+            @PathVariable String accountId,
+            @RequestBody com.uit.accountservice.dto.request.AccountBalanceRequest request) {
+        try {
+            com.uit.accountservice.dto.response.AccountBalanceResponse response = 
+                accountService.debitAccount(accountId, request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "message", e.getMessage(),
+                "transactionId", request.getTransactionId()
+            ));
+        }
+    }
+
+    /**
+     * Credit (add) amount to an account.
+     * Called synchronously by transaction-service.
+     * No authentication required - internal service call.
+     */
+    @PostMapping("/{accountId}/credit")
+    public ResponseEntity<?> creditAccount(
+            @PathVariable String accountId,
+            @RequestBody com.uit.accountservice.dto.request.AccountBalanceRequest request) {
+        try {
+            com.uit.accountservice.dto.response.AccountBalanceResponse response = 
+                accountService.creditAccount(accountId, request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "message", e.getMessage(),
+                "transactionId", request.getTransactionId()
+            ));
+        }
+    }
+
+    /**
+     * Execute internal transfer atomically (debit + credit in single transaction).
+     * Called synchronously by transaction-service.
+     * This is the RECOMMENDED approach as it guarantees atomicity.
+     * No authentication required - internal service call.
+     */
+    @PostMapping("/internal-transfer")
+    public ResponseEntity<?> executeInternalTransfer(
+            @RequestBody com.uit.accountservice.dto.request.InternalTransferRequest request) {
+        try {
+            com.uit.accountservice.dto.response.InternalTransferResponse response = 
+                accountService.executeInternalTransfer(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "message", e.getMessage(),
+                "transactionId", request.getTransactionId()
+            ));
+        }
+    }
+
+    /**
+     * Get all accounts.
+     * Endpoint to retrieve a list of all accounts in the system.
+     */
+    @GetMapping("/all")
+    public ResponseEntity<List<AccountDto>> getAllAccounts() {
+        List<AccountDto> accounts = accountService.getAllAccounts();
+        return ResponseEntity.ok(accounts);
+    }
 }

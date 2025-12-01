@@ -18,7 +18,7 @@ public class OTPService {
 
     private static final String OTP_KEY_PREFIX = "otp:transaction:";
     private static final String OTP_ATTEMPTS_KEY_PREFIX = "otp:transaction:attempts:";
-    private static final int OTP_EXPIRY_MINUTES = 5;
+    private static final int OTP_EXPIRY_MINUTES = 10;
     private static final int MAX_ATTEMPTS = 3;
 
     /**

@@ -31,7 +31,7 @@ public class OutboxPublisher {
      * Scheduled job to publish pending outbox events to RabbitMQ
      * Runs every 5 seconds
      */
-    @Scheduled(fixedDelayString = "${outbox.publisher.fixed-delay:5000}")
+    // @Scheduled(fixedDelayString = "${outbox.publisher.fixed-delay:5000}")
     @Transactional
     public void publishPendingEvents() {
         log.debug("Starting outbox publisher job...");

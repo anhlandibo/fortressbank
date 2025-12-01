@@ -21,6 +21,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@ToString
 public class Transaction {
 
     @Id
@@ -50,6 +51,25 @@ public class Transaction {
     @Column(length = 20, nullable = false)
     @Enumerated(EnumType.STRING)
     private TransactionStatus status;
+
+    /**
+     * Transfer type: INTERNAL (same bank) or EXTERNAL (interbank)
+     */
+    @Column(name = "transfer_type", length = 20)
+    @Enumerated(EnumType.STRING)
+    private TransferType transferType;
+
+    /**
+     * For external transfers: external bank's transaction reference ID
+     */
+    @Column(name = "external_transaction_id", length = 255)
+    private String externalTransactionId;
+
+    /**
+     * For external transfers: destination bank code (e.g., "VCB", "TCB")
+     */
+    @Column(name = "destination_bank_code", length = 50)
+    private String destinationBankCode;
 
     // ========== Saga Orchestration Fields ==========
     
@@ -90,4 +110,18 @@ public class Transaction {
 
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
+
+    /**
+     * Check if this is an internal transfer (within FortressBank)
+     */
+    public boolean isInternalTransfer() {
+        return txType == TransactionType.INTERNAL_TRANSFER;
+    }
+
+    /**
+     * Check if this is an external transfer (to another bank)
+     */
+    public boolean isExternalTransfer() {
+        return txType == TransactionType.EXTERNAL_TRANSFER;
+    }
 }
