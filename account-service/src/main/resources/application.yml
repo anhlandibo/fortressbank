@@ -11,6 +11,10 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
+  sql:
+    init:
+      mode: always
+      continue-on-error: true
 
 # JWT Configuration for SOAP Security
 jwt:
@@ -20,4 +24,3 @@ eureka:
   client:
     serviceUrl:
       defaultZone: http://discovery:8761/eureka
-

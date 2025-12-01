@@ -358,7 +358,7 @@ public class TransactionService {
 
             // Update transaction with success
             transaction.setCurrentStep(SagaStep.COMPLETED);
-            transaction.setStatus(TransactionStatus.SUCCESS);
+            transaction.setStatus(TransactionStatus.COMPLETED);
             transaction.setCompletedAt(LocalDateTime.now());
             transaction = transactionRepository.save(transaction);
 
