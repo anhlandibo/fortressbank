@@ -6,6 +6,7 @@ import com.uit.riskengine.dto.RiskAssessmentResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.Clock;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -19,7 +20,7 @@ public class RiskEngineService {
     private static final int UNUSUAL_HOURS_END = 6;   // 6:00 AM
 
     private final UserRiskProfileClient userRiskProfileClient;
-    private final java.time.Clock clock;
+    private final Clock clock;
 
     public RiskAssessmentResponse assessRisk(RiskAssessmentRequest request) {
         int score = 0;
