@@ -21,7 +21,6 @@ public class UserController {
     private final UserService userService;
     private final AuthService authService;
 
-    @PreAuthorize("hasRole('admin')")
     @GetMapping
     public ApiResponse<UserResponse> getMe(@AuthenticationPrincipal Jwt jwt) {
         return ApiResponse.success(userService.getCurrentUser(jwt));
