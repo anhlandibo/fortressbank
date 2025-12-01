@@ -82,6 +82,14 @@ public class TransactionController {
             @Valid @RequestBody VerifyOTPRequest request) {
 
         TransactionResponse response = transactionService.verifyOTP(request.getTransactionId(), request.getOtpCode());
+        
+        // Check if transaction failed and return appropriate HTTP status
+        if (response.getStatus() == TransactionStatus.FAILED || 
+            response.getStatus() == TransactionStatus.OTP_EXPIRED) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error(400, response.getFailureReason(), response));
+        }
+        
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 

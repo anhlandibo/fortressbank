@@ -187,7 +187,7 @@ public class AccountServiceClient {
             String transactionId,
             String description) {
         
-        String url = "http://localhost:4001" + "/accounts/internal-transfer";
+        String url = accountServiceUrl + "/accounts/internal-transfer";
         
         InternalTransferRequest request = InternalTransferRequest.builder()
                 .transactionId(transactionId)

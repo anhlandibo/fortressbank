@@ -298,12 +298,23 @@ public class TransactionService {
         if (!result.isSuccess()) {
             if (result.getMessage().contains("expired")) {
                 transaction.setStatus(TransactionStatus.OTP_EXPIRED);
-                transactionRepository.save(transaction);
+                transaction.setFailureReason("OTP has expired. Please request a new OTP.");
+                transaction = transactionRepository.save(transaction);
+                log.warn("OTP expired for transaction: {}", transactionId);
             } else if (result.getMessage().contains("Maximum")) {
                 transaction.setStatus(TransactionStatus.FAILED);
-                transactionRepository.save(transaction);
+                transaction.setFailureReason("Maximum OTP attempts exceeded.");
+                transaction = transactionRepository.save(transaction);
+                log.warn("Maximum OTP attempts reached for transaction: {}", transactionId);
+            } else {
+                transaction.setStatus(TransactionStatus.FAILED);
+                transaction.setFailureReason(result.getMessage());
+                transaction = transactionRepository.save(transaction);
+                log.warn("OTP verification failed for transaction: {} - {}", transactionId, result.getMessage());
             }
-            throw new RuntimeException(result.getMessage());
+            
+            // Return response with failure reason instead of throwing exception
+            return transactionMapper.toResponse(transaction);
         }
 
         // 5. Update transaction status to PENDING (OTP verified, processing payment)

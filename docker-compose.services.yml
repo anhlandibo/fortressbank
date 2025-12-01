@@ -139,6 +139,8 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       JWT_ISSUER_URI: http://keycloak:8080/realms/fortressbank-realm
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
     depends_on:
       discovery:
         condition: service_healthy

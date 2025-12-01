@@ -1,5 +1,5 @@
 server:
-  port: 4003
+  port: ${SERVER_PORT:4004}
   max-http-request-header-size: 64KB
 
 spring:
@@ -27,6 +27,12 @@ spring:
   sql:
     init:
       mode: always
+
+# Service Communication Configuration
+services:
+  account-service:
+    url: ${ACCOUNT_SERVICE_URL:http://account-service:4001}
+    timeout: 5000
 
 # Eureka Configuration
 eureka:

@@ -29,6 +29,15 @@ services:
           - /accounts
         strip_path: false
 
+  # protected transaction service
+  - name: transaction-service
+    url: http://transaction-service:4004
+    routes:
+      - name: transaction-service-route
+        paths:
+          - /transactions
+        strip_path: false
+
   # reference-service
   - name: reference-service
     url: http://reference-service:4003
@@ -41,29 +50,29 @@ services:
 
 plugins:
   # PROTECT user-main-route ONLY
-  - name: openid-connect
-    route: user-main-route
-    config:
-      client_id: "kong"
-      client_secret: "XLODsjH5G3f9iqGftbrkdHeNw3NVfNdZ"
-      discovery: "http://keycloak:8080/realms/fortressbank-realm/.well-known/openid-configuration"
-      session_secret: "random-secret-here"
-      scope: "openid profile email"
-      ssl_verify: false
-      bearer_only: true
-      token_endpoint_auth_method: "client_secret_post"
-      introspection_endpoint: "http://keycloak:8080/realms/fortressbank-realm/protocol/openid-connect/token/introspect"
+  # - name: openid-connect
+  #   route: user-main-route
+  #   config:
+  #     client_id: "kong"
+  #     client_secret: "XLODsjH5G3f9iqGftbrkdHeNw3NVfNdZ"
+  #     discovery: "http://keycloak:8080/realms/fortressbank-realm/.well-known/openid-configuration"
+  #     session_secret: "random-secret-here"
+  #     scope: "openid profile email"
+  #     ssl_verify: false
+  #     bearer_only: true
+  #     token_endpoint_auth_method: "client_secret_post"
+  #     introspection_endpoint: "http://keycloak:8080/realms/fortressbank-realm/protocol/openid-connect/token/introspect"
 
-  # PROTECT account service
-  - name: openid-connect
-    route: account-service-route
-    config:
-      client_id: "kong"
-      client_secret: "XLODsjH5G3f9iqGftbrkdHeNw3NVfNdZ"
-      discovery: "http://keycloak:8080/realms/fortressbank-realm/.well-known/openid-configuration"
-      session_secret: "random-secret-here"
-      scope: "openid profile email"
-      ssl_verify: false
+  # # PROTECT account service
+  # - name: openid-connect
+  #   route: account-service-route
+  #   config:
+  #     client_id: "kong"
+  #     client_secret: "XLODsjH5G3f9iqGftbrkdHeNw3NVfNdZ"
+  #     discovery: "http://keycloak:8080/realms/fortressbank-realm/.well-known/openid-configuration"
+  #     session_secret: "random-secret-here"
+  #     scope: "openid profile email"
+  #     ssl_verify: false
 
   # GLOBAL rate limit
   - name: rate-limiting
