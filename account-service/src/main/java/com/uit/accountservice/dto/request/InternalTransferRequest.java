@@ -19,10 +19,10 @@ public class InternalTransferRequest {
     private String transactionId;
     
     @NotNull(message = "Sender account ID is required")
-    private String fromAccountId;
+    private String senderAccountId;
     
     @NotNull(message = "Receiver account ID is required")
-    private String toAccountId;
+    private String receiverAccountId;
     
     @NotNull(message = "Amount is required")
     @Positive(message = "Amount must be positive")

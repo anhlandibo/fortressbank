@@ -46,24 +46,24 @@ public class TransactionService {
      */
     @Transactional
     public TransactionResponse createTransfer(CreateTransferRequest request, String userId, String phoneNumber) {
-        log.info("Creating transfer from {} to {} with OTP", request.getFromAccountId(), request.getToAccountId());
+        log.info("Creating transfer from {} to {} with OTP", request.getSenderAccountId(), request.getReceiverAccountId());
 
         // 1. Check transaction limit
-        checkTransactionLimit(request.getFromAccountId(), request.getAmount());
+        checkTransactionLimit(request.getSenderAccountId(), request.getAmount());
 
         // 2. Calculate fee
-        BigDecimal fee = calculateFee(request.getType(), request.getAmount());
+        BigDecimal fee = calculateFee(request.getTransactionType(), request.getAmount());
         // BigDecimal totalAmount = request.getAmount().add(fee);
 
         // 3. Create transaction with PENDING_OTP status and Saga state
         String correlationId = UUID.randomUUID().toString();
         
         Transaction transaction = Transaction.builder()
-                .senderAccountId(request.getFromAccountId())
-                .receiverAccountId(request.getToAccountId())
+                .senderAccountId(request.getSenderAccountId())
+                .receiverAccountId(request.getReceiverAccountId())
                 .amount(request.getAmount())
                 .feeAmount(fee)
-                .txType(request.getType())
+                .transactionType(request.getTransactionType())
                 .status(TransactionStatus.PENDING_OTP)
                 .description(request.getDescription())
                 // Saga Orchestration Fields
@@ -74,17 +74,17 @@ public class TransactionService {
         log.info("transaction " + transaction);
 
         log.info("Transaction created with ID: {} - Correlation ID: {} - Status: PENDING_OTP", 
-                transaction.getTxId(), correlationId);
+                transaction.getTransactionId(), correlationId);
 
         // 4. Generate and save OTP to Redis
         String otpCode = otpService.generateOTP();
         log.info("Generated OTP Code: " + otpCode); // For development only
-        otpService.saveOTP(transaction.getTxId(), otpCode, phoneNumber);
+        otpService.saveOTP(transaction.getTransactionId(), otpCode, phoneNumber);
         
-        log.info("OTP generated and saved to Redis for transaction: {}", transaction.getTxId());
+        log.info("OTP generated and saved to Redis for transaction: {}", transaction.getTransactionId());
 
         // 5. Send OTP SMS via event (notification-service will handle)
-        sendOTPNotification(transaction.getTxId(), phoneNumber, otpCode);
+        sendOTPNotification(transaction.getTransactionId(), phoneNumber, otpCode);
 
         return transactionMapper.toResponse(transaction);
     }
@@ -122,7 +122,7 @@ public class TransactionService {
      * Calculate transaction fee
      */
     private BigDecimal calculateFee(TransactionType type, BigDecimal amount) {
-        TransactionFee feeConfig = transactionFeeRepository.findByTxType(type)
+        TransactionFee feeConfig = transactionFeeRepository.findByTransactionType(type)
                 .orElseThrow(() -> new RuntimeException("Fee configuration not found for type: " + type));
 
         log.debug("Calculated fee: {} for amount: {} and type: {}", feeConfig.getFeeAmount(), amount, type);
@@ -210,13 +210,13 @@ public class TransactionService {
     private void createOutboxEvent(Transaction transaction, String eventType) {
         try {
             Map<String, Object> payload = new HashMap<>();
-            payload.put("transactionId", transaction.getTxId());
+            payload.put("transactionId", transaction.getTransactionId());
             payload.put("correlationId", transaction.getCorrelationId()); // For idempotency
             payload.put("senderAccountId", transaction.getSenderAccountId());
             payload.put("receiverAccountId", transaction.getReceiverAccountId());
             payload.put("amount", transaction.getAmount());
             payload.put("feeAmount", transaction.getFeeAmount());
-            payload.put("type", transaction.getTxType());
+            payload.put("type", transaction.getTransactionType());
             payload.put("status", transaction.getStatus());
             payload.put("currentStep", transaction.getCurrentStep());
             payload.put("timestamp", LocalDateTime.now());
@@ -225,7 +225,7 @@ public class TransactionService {
 
             OutboxEvent event = OutboxEvent.builder()
                     .aggregateType("transaction")
-                    .aggregateId(transaction.getTxId().toString())
+                    .aggregateId(transaction.getTransactionId().toString())
                     .eventType(eventType)
                     .payload(payloadJson)
                     .status(OutboxEventStatus.PENDING)
@@ -234,7 +234,7 @@ public class TransactionService {
 
             outboxEventRepository.save(event);
             log.info("Outbox event created: {} for transaction: {} with correlation ID: {}", 
-                    eventType, transaction.getTxId(), transaction.getCorrelationId());
+                    eventType, transaction.getTransactionId(), transaction.getCorrelationId());
 
         } catch (Exception e) {
             log.error("Failed to create outbox event", e);
@@ -324,7 +324,7 @@ public class TransactionService {
         log.info("OTP verified successfully - Transaction: {} moved to PENDING status", transactionId);
 
         // 6. Route to appropriate handler based on transfer type
-        log.info("transaction type:" + transaction.getTxType() );
+        log.info("transaction type:" + transaction.getTransactionType() );
         if (transaction.isInternalTransfer()) {
             return processInternalTransfer(transaction);
         } else {
@@ -337,7 +337,7 @@ public class TransactionService {
      * Uses atomic endpoint for guaranteed consistency
      */
     private TransactionResponse processInternalTransfer(Transaction transaction) {
-        log.info("Processing INTERNAL transfer - TxID: {}", transaction.getTxId());
+        log.info("Processing INTERNAL transfer - TxID: {}", transaction.getTransactionId());
 
         BigDecimal totalAmount = transaction.getAmount().add(transaction.getFeeAmount());
         
@@ -352,7 +352,7 @@ public class TransactionService {
                     transaction.getSenderAccountId(),
                     transaction.getReceiverAccountId(),
                     totalAmount,
-                    transaction.getTxId().toString(),
+                    transaction.getTransactionId().toString(),
                     transaction.getDescription()
             );
 
@@ -369,7 +369,7 @@ public class TransactionService {
             sendTransactionNotification(transaction, "TransactionCompleted", true);
             
             log.info("Internal transfer completed - TxID: {} - Sender new balance: {} - Receiver new balance: {}",
-                    transaction.getTxId(), 
+                    transaction.getTransactionId(), 
                     transferResponse.getFromAccountNewBalance(),
                     transferResponse.getToAccountNewBalance());
             
@@ -377,7 +377,7 @@ public class TransactionService {
 
         } catch (InsufficientBalanceException e) {
             // Business logic error: insufficient balance
-            log.error("Internal transfer {} failed: Insufficient balance", transaction.getTxId(), e);
+            log.error("Internal transfer {} failed: Insufficient balance", transaction.getTransactionId(), e);
             transaction.setStatus(TransactionStatus.FAILED);
             transaction.setCurrentStep(SagaStep.FAILED);
             transaction.setFailureReason("Insufficient balance");
@@ -388,7 +388,7 @@ public class TransactionService {
 
         } catch (AccountServiceException e) {
             // Technical error: account service unavailable or error
-            log.error("Internal transfer {} failed: Account service error", transaction.getTxId(), e);
+            log.error("Internal transfer {} failed: Account service error", transaction.getTransactionId(), e);
             transaction.setStatus(TransactionStatus.FAILED);
             transaction.setCurrentStep(SagaStep.FAILED);
             transaction.setFailureReason("Account service error: " + e.getMessage());
@@ -399,7 +399,7 @@ public class TransactionService {
 
         } catch (Exception e) {
             // Unexpected error
-            log.error("Unexpected error during internal transfer: {}", transaction.getTxId(), e);
+            log.error("Unexpected error during internal transfer: {}", transaction.getTransactionId(), e);
             transaction.setStatus(TransactionStatus.FAILED);
             transaction.setCurrentStep(SagaStep.FAILED);
             transaction.setFailureReason("Unexpected error: " + e.getMessage());
@@ -416,7 +416,7 @@ public class TransactionService {
      */
     private TransactionResponse processExternalTransfer(Transaction transaction) {
         log.info("Processing EXTERNAL transfer - TxID: {} - To Bank: {}", 
-                transaction.getTxId(), transaction.getDestinationBankCode());
+                transaction.getTransactionId(), transaction.getDestinationBankCode());
 
         BigDecimal totalAmount = transaction.getAmount().add(transaction.getFeeAmount());
         
@@ -428,7 +428,7 @@ public class TransactionService {
             AccountBalanceResponse debitResponse = accountServiceClient.debitAccount(
                     transaction.getSenderAccountId(),
                     totalAmount,
-                    transaction.getTxId().toString(),
+                    transaction.getTransactionId().toString(),
                     "External transfer to " + transaction.getDestinationBankCode()
             );
             
@@ -440,7 +440,7 @@ public class TransactionService {
             log.info("Step 2: Publishing external transfer event to message queue");
             
             ExternalTransferInitiatedEvent event = ExternalTransferInitiatedEvent.builder()
-                    .transactionId(transaction.getTxId().toString())
+                    .transactionId(transaction.getTransactionId().toString())
                     .sourceAccountNumber(transaction.getSenderAccountId())
                     .sourceBankCode("FORTRESS")
                     .destinationAccountNumber(transaction.getReceiverAccountId())
@@ -458,7 +458,7 @@ public class TransactionService {
             transaction = transactionRepository.save(transaction);
 
             log.info("External transfer event published to MQ - TxID: {} - Status: PENDING", 
-                    transaction.getTxId());
+                    transaction.getTransactionId());
 
             // Update transaction limit
             updateTransactionLimit(transaction.getSenderAccountId(), totalAmount);
@@ -469,7 +469,7 @@ public class TransactionService {
             return transactionMapper.toResponse(transaction);
 
         } catch (InsufficientBalanceException e) {
-            log.error("External transfer {} failed: Insufficient balance", transaction.getTxId(), e);
+            log.error("External transfer {} failed: Insufficient balance", transaction.getTransactionId(), e);
             transaction.setStatus(TransactionStatus.FAILED);
             transaction.setCurrentStep(SagaStep.FAILED);
             transaction.setFailureReason("Insufficient balance");
@@ -480,22 +480,22 @@ public class TransactionService {
 
         } catch (AccountServiceException e) {
             // Handle partial failure - need rollback
-            log.error("Transaction {} failed during account service call", transaction.getTxId(), e);
+            log.error("Transaction {} failed during account service call", transaction.getTransactionId(), e);
             
             // If debit succeeded but credit failed, rollback the debit
             if (transaction.getCurrentStep() == SagaStep.DEBIT_COMPLETED) {
-                log.warn("Rolling back debit for transaction {}", transaction.getTxId());
+                log.warn("Rolling back debit for transaction {}", transaction.getTransactionId());
                 try {
                     accountServiceClient.rollbackDebit(
                             transaction.getSenderAccountId(),
                             totalAmount,
-                            transaction.getTxId().toString()
+                            transaction.getTransactionId().toString()
                     );
                     transaction.setCurrentStep(SagaStep.ROLLBACK_COMPLETED);
-                    log.info("Rollback completed for transaction {}", transaction.getTxId());
+                    log.info("Rollback completed for transaction {}", transaction.getTransactionId());
                 } catch (Exception rollbackError) {
                     log.error("CRITICAL: Rollback failed for transaction {} - Manual intervention required!", 
-                            transaction.getTxId(), rollbackError);
+                            transaction.getTransactionId(), rollbackError);
                     transaction.setCurrentStep(SagaStep.ROLLBACK_FAILED);
                 }
             }
@@ -511,7 +511,7 @@ public class TransactionService {
 
         } catch (Exception e) {
             // Unexpected error
-            log.error("Unexpected error during transaction {}", transaction.getTxId(), e);
+            log.error("Unexpected error during transaction {}", transaction.getTransactionId(), e);
             transaction.setStatus(TransactionStatus.FAILED);
             transaction.setCurrentStep(SagaStep.FAILED);
             transaction.setFailureReason("System error: " + e.getMessage());
@@ -530,7 +530,7 @@ public class TransactionService {
     private void sendTransactionNotification(Transaction transaction, String eventType, boolean success) {
         try {
             Map<String, Object> payload = new HashMap<>();
-            payload.put("transactionId", transaction.getTxId().toString());
+            payload.put("transactionId", transaction.getTransactionId().toString());
             payload.put("senderAccountId", transaction.getSenderAccountId());
             payload.put("receiverAccountId", transaction.getReceiverAccountId());
             payload.put("amount", transaction.getAmount());
@@ -542,7 +542,7 @@ public class TransactionService {
             String payloadJson = objectMapper.writeValueAsString(payload);
 
             OutboxEvent event = OutboxEvent.builder()
-                    .aggregateId(transaction.getTxId().toString())
+                    .aggregateId(transaction.getTransactionId().toString())
                     .aggregateType("Transaction")
                     .eventType(eventType)
                     .payload(payloadJson)
@@ -550,7 +550,7 @@ public class TransactionService {
                     .build();
 
             outboxEventRepository.save(event);
-            log.info("Notification event {} created for transaction: {}", eventType, transaction.getTxId());
+            log.info("Notification event {} created for transaction: {}", eventType, transaction.getTransactionId());
 
         } catch (Exception e) {
             log.error("Failed to create notification event - non-critical", e);

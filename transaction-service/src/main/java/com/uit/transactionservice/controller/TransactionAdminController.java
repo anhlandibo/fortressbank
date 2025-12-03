@@ -33,15 +33,15 @@ public class TransactionAdminController {
 
     /**
      * Update fee configuration for a specific transaction type
-     * PUT /transactions/admin/fees/{txType}
+     * PUT /transactions/admin/fees/{transactionType}
      */
-    @PutMapping("/fees/{txType}")
+    @PutMapping("/fees/{transactionType}")
     @RequireRole("admin")
     public ResponseEntity<ApiResponse<TransactionFeeResponse>> updateFee(
-            @PathVariable TransactionType txType,
+            @PathVariable TransactionType transactionType,
             @Valid @RequestBody UpdateFeeRequest request) {
 
-        TransactionFeeResponse response = transactionFeeService.updateFee(txType, request);
+        TransactionFeeResponse response = transactionFeeService.updateFee(transactionType, request);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 }

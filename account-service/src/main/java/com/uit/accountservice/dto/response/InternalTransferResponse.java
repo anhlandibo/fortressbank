@@ -15,13 +15,13 @@ public class InternalTransferResponse {
     
     private String transactionId;
     
-    private String fromAccountId;
-    private BigDecimal fromAccountOldBalance;
-    private BigDecimal fromAccountNewBalance;
+    private String senderAccountId;
+    private BigDecimal senderAccountOldBalance;
+    private BigDecimal senderAccountNewBalance;
     
-    private String toAccountId;
-    private BigDecimal toAccountOldBalance;
-    private BigDecimal toAccountNewBalance;
+    private String receiverAccountId;
+    private BigDecimal receiverAccountOldBalance;
+    private BigDecimal receiverAccountNewBalance;
     
     private BigDecimal amount;
     private boolean success;

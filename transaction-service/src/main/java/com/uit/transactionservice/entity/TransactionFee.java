@@ -23,9 +23,9 @@ public class TransactionFee {
     @Column(name = "fee_id")
     private Long feeId;
 
-    @Column(name = "tx_type", length = 20, unique = true, nullable = false)
+    @Column(name = "transaction_type", length = 20, unique = true, nullable = false)
     @Enumerated(EnumType.STRING)
-    private TransactionType txType;
+    private TransactionType transactionType;
 
     @Column(name = "fee_amount", nullable = false, precision = 19, scale = 2)
     private BigDecimal feeAmount;

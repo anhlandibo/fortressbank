@@ -40,6 +40,6 @@ public class JwtConfig {
         // - Signature verification
         // - Token expiration validation
         // - Issuer validation
-        return NimbusJwtDecoder.withIssuerLocation(issuerUri).build();
+        return NimbusJwtDecoder.withJwkSetUri(issuerUri).build();
     }
 }

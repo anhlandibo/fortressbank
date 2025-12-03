@@ -12,7 +12,7 @@ import java.math.BigDecimal;
 @Builder
 public class TransactionFeeResponse {
 
-    private String id;
+    private String fee_id;
     private TransactionType transactionType;
     private BigDecimal feePercentage;
     private BigDecimal fixedFee;

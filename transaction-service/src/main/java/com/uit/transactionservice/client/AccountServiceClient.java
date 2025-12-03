@@ -191,8 +191,8 @@ public class AccountServiceClient {
         
         InternalTransferRequest request = InternalTransferRequest.builder()
                 .transactionId(transactionId)
-                .fromAccountId(fromAccountId)
-                .toAccountId(toAccountId)
+                .senderAccountId(fromAccountId)
+                .receiverAccountId(toAccountId)
                 .amount(amount)
                 .description(description)
                 .build();

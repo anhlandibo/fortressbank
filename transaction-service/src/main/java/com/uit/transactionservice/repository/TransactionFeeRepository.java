@@ -10,5 +10,5 @@ import java.util.Optional;
 @Repository
 public interface TransactionFeeRepository extends JpaRepository<TransactionFee, Long> {
 
-    Optional<TransactionFee> findByTxType(TransactionType txType);
+    Optional<TransactionFee> findByTransactionType(TransactionType transactionType);
 }

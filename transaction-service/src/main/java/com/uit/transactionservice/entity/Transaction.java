@@ -26,8 +26,8 @@ public class Transaction {
 
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
-    @Column(name = "tx_id")
-    private java.util.UUID txId;
+    @Column(name = "transaction_id")
+    private java.util.UUID transactionId;
 
     @Column(name = "sender_account_id", nullable = false)
     private String senderAccountId;
@@ -44,9 +44,9 @@ public class Transaction {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String description;
 
-    @Column(name = "tx_type", length = 20)
+    @Column(name = "transaction_type", length = 20)
     @Enumerated(EnumType.STRING)
-    private TransactionType txType;
+    private TransactionType transactionType;
 
     @Column(length = 20, nullable = false)
     @Enumerated(EnumType.STRING)
@@ -115,13 +115,13 @@ public class Transaction {
      * Check if this is an internal transfer (within FortressBank)
      */
     public boolean isInternalTransfer() {
-        return txType == TransactionType.INTERNAL_TRANSFER;
+        return transactionType == TransactionType.INTERNAL_TRANSFER;
     }
 
     /**
      * Check if this is an external transfer (to another bank)
      */
     public boolean isExternalTransfer() {
-        return txType == TransactionType.EXTERNAL_TRANSFER;
+        return transactionType == TransactionType.EXTERNAL_TRANSFER;
     }
 }

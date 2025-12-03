@@ -37,7 +37,7 @@ public class TransactionFeeService {
      */
     public TransactionFeeResponse getFeeByType(TransactionType type) {
         log.info("Getting fee configuration for type: {}", type);
-        TransactionFee fee = transactionFeeRepository.findByTxType(type)
+        TransactionFee fee = transactionFeeRepository.findByTransactionType(type)
                 .orElseThrow(() -> new RuntimeException("Fee configuration not found for type: " + type));
         
         return transactionMapper.toFeeResponse(fee);
@@ -50,7 +50,7 @@ public class TransactionFeeService {
     public TransactionFeeResponse updateFee(TransactionType type, UpdateFeeRequest request) {
         log.info("Updating fee configuration for type: {}", type);
         
-        TransactionFee fee = transactionFeeRepository.findByTxType(type)
+        TransactionFee fee = transactionFeeRepository.findByTransactionType(type)
                 .orElseThrow(() -> new RuntimeException("Fee configuration not found for type: " + type));
 
         fee.setFeeAmount(request.getFeeAmount());

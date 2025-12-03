@@ -15,18 +15,18 @@ import java.math.BigDecimal;
 @Builder
 public class CreateTransferRequest {
 
-    @NotBlank(message = "From account ID is required")
-    private String fromAccountId;
+    @NotBlank(message = "Sender account ID is required")
+    private String senderAccountId;
 
-    @NotBlank(message = "To account ID is required")
-    private String toAccountId;
+    @NotBlank(message = "Receiver account ID is required")
+    private String receiverAccountId;
 
     @NotNull(message = "Amount is required")
     @DecimalMin(value = "0.01", message = "Amount must be greater than 0")
     private BigDecimal amount;
 
     @NotNull(message = "Transaction type is required")
-    private TransactionType type;
+    private TransactionType transactionType;
 
     private String description;
 }

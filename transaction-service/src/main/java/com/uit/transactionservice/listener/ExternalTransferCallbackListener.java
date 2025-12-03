@@ -74,7 +74,7 @@ public class ExternalTransferCallbackListener {
      */
     private void handleExternalTransferSuccess(Transaction transaction, ExternalTransferCompletedEvent event) {
         log.info("Processing successful external transfer - TxID: {} - External Ref: {}",
-                transaction.getTxId(),
+                transaction.getTransactionId(),
                 event.getExternalTransactionId());
 
         // Update transaction status
@@ -84,7 +84,7 @@ public class ExternalTransferCallbackListener {
         transaction.setExternalTransactionId(event.getExternalTransactionId());
         transactionRepository.save(transaction);
 
-        log.info("External transfer completed successfully - TxID: {}", transaction.getTxId());
+        log.info("External transfer completed successfully - TxID: {}", transaction.getTransactionId());
 
         // TODO: Send success notification to user
     }
@@ -94,7 +94,7 @@ public class ExternalTransferCallbackListener {
      */
     private void handleExternalTransferFailure(Transaction transaction, ExternalTransferCompletedEvent event) {
         log.warn("Processing failed external transfer - TxID: {} - Reason: {}",
-                transaction.getTxId(),
+                transaction.getTransactionId(),
                 event.getMessage());
 
         // Calculate refund amount (amount + fee)
@@ -109,7 +109,7 @@ public class ExternalTransferCallbackListener {
             accountServiceClient.creditAccount(
                     transaction.getSenderAccountId(),
                     refundAmount,
-                    transaction.getTxId().toString(),
+                    transaction.getTransactionId().toString(),
                     "Refund for failed external transfer: " + event.getMessage()
             );
 
@@ -120,14 +120,14 @@ public class ExternalTransferCallbackListener {
             transaction.setExternalTransactionId(event.getExternalTransactionId());
             transactionRepository.save(transaction);
 
-            log.info("External transfer failed and refunded - TxID: {}", transaction.getTxId());
+            log.info("External transfer failed and refunded - TxID: {}", transaction.getTransactionId());
 
             // TODO: Send failure notification to user
 
         } catch (Exception e) {
             // CRITICAL: Refund failed - needs manual intervention
             log.error("CRITICAL: Failed to refund sender account after external transfer failure - TxID: {} - Amount: {}",
-                    transaction.getTxId(),
+                    transaction.getTransactionId(),
                     refundAmount,
                     e);
 

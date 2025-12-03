@@ -14,12 +14,12 @@ import java.time.LocalDateTime;
 @Builder
 public class TransactionResponse {
 
-    private java.util.UUID txId;
+    private java.util.UUID transactionId;
     private String senderAccountId;
     private String receiverAccountId;
     private BigDecimal amount;
     private BigDecimal feeAmount;
-    private TransactionType txType;
+    private TransactionType transactionType;
     private TransactionStatus status;
     private String description;
     private LocalDateTime createdAt;

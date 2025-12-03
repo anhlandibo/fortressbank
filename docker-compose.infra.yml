@@ -19,6 +19,26 @@ services:
       timeout: 5s
       retries: 5
 
+  account-service-db:
+    image: postgres:16-alpine
+    container_name: account-service-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: accountdb
+    ports:
+      - "5434:5432"
+    volumes:
+      # This 'accountdb_data' is defined in docker-compose.base.yml
+      - accountdb_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -h localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   keycloak-db:
     image: postgres:16-alpine
     container_name: keycloak-db

@@ -80,15 +80,15 @@ public class AccountService {
     public Object handleTransfer(TransferRequest transferRequest, String userId, 
                                  String deviceFingerprint, String ipAddress, String location) {
         // Security checks
-        Account sourceAccount = accountRepository.findById(transferRequest.getFromAccountId())
+        Account sourceAccount = accountRepository.findById(transferRequest.getSenderAccountId())
                 .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Source account not found"));
 
         if (!sourceAccount.getUserId().equals(userId)) {
             // Audit: Unauthorized access attempt
             auditService.logTransfer(
                     userId,
-                    transferRequest.getFromAccountId(),
-                    transferRequest.getToAccountId(),
+                    transferRequest.getSenderAccountId(),
+                    transferRequest.getReceiverAccountId(),
                     transferRequest.getAmount(),
                     TransferStatus.FAILED,
                     null,
@@ -105,8 +105,8 @@ public class AccountService {
             // Audit: Insufficient funds
             auditService.logTransfer(
                     userId,
-                    transferRequest.getFromAccountId(),
-                    transferRequest.getToAccountId(),
+                    transferRequest.getSenderAccountId(),
+                    transferRequest.getReceiverAccountId(),
                     transferRequest.getAmount(),
                     TransferStatus.FAILED,
                     null,
@@ -126,7 +126,7 @@ public class AccountService {
                     RiskAssessmentRequest.builder()
                             .amount(transferRequest.getAmount())
                             .userId(userId)
-                            .payeeId(transferRequest.getToAccountId())
+                            .payeeId(transferRequest.getReceiverAccountId())
                             .deviceFingerprint(deviceFingerprint)
                             .ipAddress(ipAddress)
                             .location(location)
@@ -135,8 +135,8 @@ public class AccountService {
             // Audit: Risk assessment failed
             auditService.logTransfer(
                     userId,
-                    transferRequest.getFromAccountId(),
-                    transferRequest.getToAccountId(),
+                    transferRequest.getSenderAccountId(),
+                    transferRequest.getReceiverAccountId(),
                     transferRequest.getAmount(),
                     TransferStatus.FAILED,
                     null,
@@ -168,8 +168,8 @@ public class AccountService {
                 // Audit: OTP sending failed
                 auditService.logTransfer(
                         userId,
-                        transferRequest.getFromAccountId(),
-                        transferRequest.getToAccountId(),
+                        transferRequest.getSenderAccountId(),
+                        transferRequest.getReceiverAccountId(),
                         transferRequest.getAmount(),
                         TransferStatus.FAILED,
                         riskAssessment.getRiskLevel(),
@@ -198,8 +198,8 @@ public class AccountService {
             // Audit: Challenge issued (pending OTP verification)
             auditService.logTransfer(
                     userId,
-                    transferRequest.getFromAccountId(),
-                    transferRequest.getToAccountId(),
+                    transferRequest.getSenderAccountId(),
+                    transferRequest.getReceiverAccountId(),
                     transferRequest.getAmount(),
                     TransferStatus.PENDING,
                     riskAssessment.getRiskLevel(),
@@ -250,8 +250,8 @@ public class AccountService {
             // Audit: Invalid OTP attempt
             auditService.logTransfer(
                     pendingTransfer.getUserId(),
-                    pendingTransfer.getTransferRequest().getFromAccountId(),
-                    pendingTransfer.getTransferRequest().getToAccountId(),
+                    pendingTransfer.getTransferRequest().getSenderAccountId(),
+                    pendingTransfer.getTransferRequest().getReceiverAccountId(),
                     pendingTransfer.getTransferRequest().getAmount(),
                     TransferStatus.FAILED,
                     pendingTransfer.getRiskLevel(),
@@ -284,9 +284,9 @@ public class AccountService {
                                       String deviceFingerprint, String ipAddress, String location,
                                       RiskAssessmentResponse riskAssessment) {
         try {
-            Account fromAccount = accountRepository.findById(transferRequest.getFromAccountId())
+            Account fromAccount = accountRepository.findById(transferRequest.getSenderAccountId())
                     .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Source account not found"));
-            Account toAccount = accountRepository.findById(transferRequest.getToAccountId())
+            Account toAccount = accountRepository.findById(transferRequest.getReceiverAccountId())
                     .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Destination account not found"));
 
             fromAccount.setBalance(fromAccount.getBalance().subtract(transferRequest.getAmount()));
@@ -301,8 +301,8 @@ public class AccountService {
             
             auditService.logTransfer(
                     userId,
-                    transferRequest.getFromAccountId(),
-                    transferRequest.getToAccountId(),
+                    transferRequest.getSenderAccountId(),
+                    transferRequest.getReceiverAccountId(),
                     transferRequest.getAmount(),
                     TransferStatus.COMPLETED,
                     riskLevel,
@@ -321,8 +321,8 @@ public class AccountService {
             
             auditService.logTransfer(
                     userId,
-                    transferRequest.getFromAccountId(),
-                    transferRequest.getToAccountId(),
+                    transferRequest.getSenderAccountId(),
+                    transferRequest.getReceiverAccountId(),
                     transferRequest.getAmount(),
                     TransferStatus.FAILED,
                     riskLevel,
@@ -430,11 +430,11 @@ public class AccountService {
             com.uit.accountservice.dto.request.InternalTransferRequest request) {
         
         log.info("Executing internal transfer - From: {} To: {} Amount: {} TxID: {}", 
-                request.getFromAccountId(), request.getToAccountId(), 
+                request.getSenderAccountId(), request.getReceiverAccountId(), 
                 request.getAmount(), request.getTransactionId());
 
         // Lock BOTH accounts in deterministic order to prevent deadlock
-        List<String> accountIds = List.of(request.getFromAccountId(), request.getToAccountId());
+        List<String> accountIds = List.of(request.getSenderAccountId(), request.getReceiverAccountId());
         List<Account> accounts = accountRepository.findByIdInWithLock(accountIds);
         
         if (accounts.size() != 2) {
@@ -444,13 +444,13 @@ public class AccountService {
         
         // Identify sender and receiver
         Account fromAccount = accounts.stream()
-                .filter(a -> a.getAccountId().equals(request.getFromAccountId()))
+                .filter(a -> a.getAccountId().equals(request.getSenderAccountId()))
                 .findFirst()
                 .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND, 
                         "Sender account not found"));
         
         Account toAccount = accounts.stream()
-                .filter(a -> a.getAccountId().equals(request.getToAccountId()))
+                .filter(a -> a.getAccountId().equals(request.getReceiverAccountId()))
                 .findFirst()
                 .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND, 
                         "Receiver account not found"));
@@ -462,7 +462,7 @@ public class AccountService {
         // Check sufficient balance
         if (fromAccount.getBalance().compareTo(request.getAmount()) < 0) {
             log.warn("Insufficient balance - Account: {} Required: {} Available: {}", 
-                    request.getFromAccountId(), request.getAmount(), fromAccount.getBalance());
+                    request.getSenderAccountId(), request.getAmount(), fromAccount.getBalance());
             throw new AppException(ErrorCode.INSUFFICIENT_FUNDS, 
                     "Insufficient balance in sender account");
         }
@@ -477,17 +477,17 @@ public class AccountService {
         
         log.info("Internal transfer completed - TxID: {} - Sender: {} ({} → {}) - Receiver: {} ({} → {})", 
                 request.getTransactionId(),
-                request.getFromAccountId(), fromOldBalance, fromAccount.getBalance(),
-                request.getToAccountId(), toOldBalance, toAccount.getBalance());
+                request.getSenderAccountId(), fromOldBalance, fromAccount.getBalance(),
+                request.getReceiverAccountId(), toOldBalance, toAccount.getBalance());
         
         return com.uit.accountservice.dto.response.InternalTransferResponse.builder()
                 .transactionId(request.getTransactionId())
-                .fromAccountId(request.getFromAccountId())
-                .fromAccountOldBalance(fromOldBalance)
-                .fromAccountNewBalance(fromAccount.getBalance())
-                .toAccountId(request.getToAccountId())
-                .toAccountOldBalance(toOldBalance)
-                .toAccountNewBalance(toAccount.getBalance())
+                .senderAccountId(request.getSenderAccountId())
+                .senderAccountOldBalance(fromOldBalance)
+                .senderAccountNewBalance(fromAccount.getBalance())
+                .receiverAccountId(request.getReceiverAccountId())
+                .receiverAccountOldBalance(toOldBalance)
+                .receiverAccountNewBalance(toAccount.getBalance())
                 .amount(request.getAmount())
                 .success(true)
                 .message("Internal transfer completed successfully")

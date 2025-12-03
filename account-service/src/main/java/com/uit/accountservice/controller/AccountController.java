@@ -1,7 +1,5 @@
 package com.uit.accountservice.controller;
 
-import com.uit.accountservice.dto.request.TransferRequest;
-import com.uit.accountservice.dto.request.VerifyTransferRequest;
 import com.uit.accountservice.entity.TransferAuditLog;
 import com.uit.accountservice.mapper.AccountMapper;
 import com.uit.accountservice.repository.AccountRepository;
@@ -14,10 +12,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import jakarta.servlet.http.HttpServletRequest;
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
+
 import java.util.Map;
 import java.util.List;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/accounts")
@@ -28,15 +26,11 @@ public class AccountController {
     private final AccountRepository accountRepository;
     private final AccountMapper accountMapper;
     private final TransferAuditService auditService;
-
+    
+    //change this to check health for this endpoint
     @GetMapping("/")
-    public Map<String, Object> getRoot(HttpServletRequest request) {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> userInfo = (Map<String, Object>) request.getAttribute("userInfo");
-        return Map.of(
-            "message", "Account Service Root",
-            "user", userInfo
-        );
+    public Map<String, Object> healthCheck() {
+        return Map.of("status", "Account Service is running");
     }
     
     @GetMapping("/my-accounts")
@@ -62,47 +56,21 @@ public class AccountController {
     @GetMapping("/{accountId}")
     @PreAuthorize("@accountService.isOwner(#accountId, authentication.name)")
     @RequireRole("user")
-    public ResponseEntity<AccountDto> getAccount(@PathVariable String accountId) {
-        return accountRepository.findById(accountId)
-                .map(accountMapper::toDto)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
-    
-    @GetMapping("/dashboard")
-    @RequireRole("admin")  // Like requireRole('admin') in Express
-    public Map<String, Object> getDashboard(HttpServletRequest request) {
-        return Map.of(
-            "message", "Admin Dashboard",
-            "stats", Map.of("totalUsers", 42, "totalAccounts", 100)
-        );
-    }
-
-    @PostMapping("/transfers")
-    @PreAuthorize("@accountService.isOwner(#transferRequest.fromAccountId, authentication.name)")
-    @RequireRole("user")
-    public ResponseEntity<?> handleTransfer(@RequestBody TransferRequest transferRequest, HttpServletRequest request) {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> userInfo = (Map<String, Object>) request.getAttribute("userInfo");
-        String userId = (String) userInfo.get("sub");
-        
-        // Extract fraud detection metadata from headers
-        String deviceFingerprint = request.getHeader("X-Device-Fingerprint");
-        String ipAddress = request.getHeader("X-Forwarded-For");
-        if (ipAddress == null) {
-            ipAddress = request.getRemoteAddr();
+    public ResponseEntity<?> getAccount(@PathVariable String accountId) {
+        if (accountId == null || accountId.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Account ID must be provided"));
         }
-        String location = request.getHeader("X-Location"); // Expected format: "City, Country" or "Country"
         
-        return ResponseEntity.ok(accountService.handleTransfer(
-                transferRequest, userId, deviceFingerprint, ipAddress, location));
+        Optional<com.uit.accountservice.entity.Account> accountOptional = accountRepository.findById(accountId);
+
+        if (accountOptional.isPresent()) {
+            AccountDto accountDto = accountMapper.toDto(accountOptional.get());
+            return ResponseEntity.ok(accountDto);
+        } else {
+            return ResponseEntity.status(404).body(Map.of("success", false, "message", "Account not found"));
+        }
     }
 
-    @PostMapping("/verify-transfer")
-    @RequireRole("user")
-    public ResponseEntity<AccountDto> verifyTransfer(@RequestBody VerifyTransferRequest verifyTransferRequest) {
-        return ResponseEntity.ok(accountService.verifyTransfer(verifyTransferRequest));
-    }
 
     /**
      * Get audit logs for the current user's transfers.
@@ -132,56 +100,7 @@ public class AccountController {
     }
 
     /**
-     * Get recent high-value transfers (admin only).
-     * Used for monitoring suspicious activity.
-     */
-    @GetMapping("/audit/high-value")
-    @RequireRole("admin")
-    public ResponseEntity<List<TransferAuditLog>> getHighValueTransfers(
-            @RequestParam(defaultValue = "10000") BigDecimal minAmount,
-            @RequestParam(defaultValue = "24") int hours) {
-        LocalDateTime since = LocalDateTime.now().minusHours(hours);
-        List<TransferAuditLog> auditLogs = auditService.getHighValueTransfers(minAmount, since);
-        return ResponseEntity.ok(auditLogs);
-    }
-
-    /**
-     * Get recent failed transfers (admin only).
-     * Used for security monitoring and fraud detection.
-     */
-    @GetMapping("/audit/failed")
-    @RequireRole("admin")
-    public ResponseEntity<List<TransferAuditLog>> getFailedTransfers(
-            @RequestParam(defaultValue = "24") int hours) {
-        LocalDateTime since = LocalDateTime.now().minusHours(hours);
-        List<TransferAuditLog> auditLogs = auditService.getFailedTransfers(since);
-        return ResponseEntity.ok(auditLogs);
-    }
-
-    /**
-     * Get velocity check for a user (admin only).
-     * Returns count of recent transfers for fraud detection.
-     */
-    @GetMapping("/audit/velocity/{userId}")
-    @RequireRole("admin")
-    public ResponseEntity<Map<String, Object>> getUserVelocity(
-            @PathVariable String userId,
-            @RequestParam(defaultValue = "60") int minutes) {
-        LocalDateTime since = LocalDateTime.now().minusMinutes(minutes);
-        long count = auditService.countRecentTransfers(userId, since);
-        
-        return ResponseEntity.ok(Map.of(
-            "userId", userId,
-            "transferCount", count,
-            "periodMinutes", minutes,
-            "timestamp", LocalDateTime.now()
-        ));
-    }
-
-    /**
      * Debit (subtract) amount from an account.
-     * Called synchronously by transaction-service.
-     * No authentication required - internal service call.
      */
     @PostMapping("/{accountId}/debit")
     public ResponseEntity<?> debitAccount(
@@ -202,8 +121,6 @@ public class AccountController {
 
     /**
      * Credit (add) amount to an account.
-     * Called synchronously by transaction-service.
-     * No authentication required - internal service call.
      */
     @PostMapping("/{accountId}/credit")
     public ResponseEntity<?> creditAccount(
@@ -224,9 +141,6 @@ public class AccountController {
 
     /**
      * Execute internal transfer atomically (debit + credit in single transaction).
-     * Called synchronously by transaction-service.
-     * This is the RECOMMENDED approach as it guarantees atomicity.
-     * No authentication required - internal service call.
      */
     @PostMapping("/internal-transfer")
     public ResponseEntity<?> executeInternalTransfer(

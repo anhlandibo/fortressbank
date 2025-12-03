@@ -13,8 +13,8 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 public class InternalTransferRequest {
     private String transactionId;
-    private String fromAccountId;
-    private String toAccountId;
+    private String senderAccountId;
+    private String receiverAccountId;
     private BigDecimal amount;
     private String description;
 }

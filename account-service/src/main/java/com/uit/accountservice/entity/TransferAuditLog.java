@@ -19,8 +19,8 @@ import java.time.LocalDateTime;
         @Index(name = "idx_audit_user", columnList = "user_id"),
         @Index(name = "idx_audit_status", columnList = "status"),
         @Index(name = "idx_audit_timestamp", columnList = "timestamp"),
-        @Index(name = "idx_audit_from_account", columnList = "from_account_id"),
-        @Index(name = "idx_audit_to_account", columnList = "to_account_id"),
+        @Index(name = "idx_audit_sender_account", columnList = "sender_account_id"),
+        @Index(name = "idx_audit_receiver_account", columnList = "receiver_account_id"),
         @Index(name = "idx_audit_risk_level", columnList = "risk_level")
     })
 @Getter
@@ -40,11 +40,11 @@ public class TransferAuditLog {
     private String userId;
 
     // Transfer details
-    @Column(name = "from_account_id", nullable = false, length = 255)
-    private String fromAccountId;
+    @Column(name = "sender_account_id", nullable = false, length = 255)
+    private String senderAccountId;
 
-    @Column(name = "to_account_id", nullable = false, length = 255)
-    private String toAccountId;
+    @Column(name = "receiver_account_id", nullable = false, length = 255)
+    private String receiverAccountId;
 
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal amount;

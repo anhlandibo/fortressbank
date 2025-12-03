@@ -34,8 +34,8 @@ public class TransferAuditService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void logTransfer(
             String userId,
-            String fromAccountId,
-            String toAccountId,
+            String senderAccountId,
+            String receiverAccountId,
             BigDecimal amount,
             TransferStatus status,
             String riskLevel,
@@ -48,8 +48,8 @@ public class TransferAuditService {
         try {
             TransferAuditLog auditLog = TransferAuditLog.builder()
                     .userId(userId)
-                    .fromAccountId(fromAccountId)
-                    .toAccountId(toAccountId)
+                    .senderAccountId(senderAccountId)
+                    .receiverAccountId(receiverAccountId)
                     .amount(amount)
                     .status(status)
                     .riskLevel(riskLevel)
@@ -62,10 +62,10 @@ public class TransferAuditService {
 
             auditLogRepository.save(auditLog);
             log.debug("Transfer audit logged: {} from {} to {} amount {} status {}", 
-                    userId, fromAccountId, toAccountId, amount, status);
+                    userId, senderAccountId, receiverAccountId, amount, status);
         } catch (Exception e) {
             log.error("Failed to log transfer audit: {} from {} to {}", 
-                    userId, fromAccountId, toAccountId, e);
+                    userId, senderAccountId, receiverAccountId, e);
             // Don't throw - audit logging failures shouldn't break the transfer
         }
     }

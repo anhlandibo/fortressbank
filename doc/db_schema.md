@@ -1,36 +1,23 @@
 // =======================================================
-// DATABASE: auth_db (User Service)
+// DATABASE: user_db (User Service)
 // =======================================================
 
 Table users {
-user_id int [pk, increment]
-cccd varchar(20) [unique, not null]
+user_id char(36) [pk]
 username varchar(50) [unique, not null]
 email varchar(100) [unique, not null]
-
-// [THÊM CỘT] Trạng thái xử lý Saga (nếu bị rollback thì đổi thành DELETED/INACTIVE)
-status varchar(20) [default: 'PENDING_VERIFICATION']
-
-created_at timestamp
+status varchar(30) [not null, default: 'PENDING_VERIFICATION']
+created_at timestamp [not null]
 }
 
 Table user_credentials {
-user_id int [pk, ref: - users.user_id]
-password_hash varchar(255)
-last_changed timestamp
-}
-
-Table user_roles {
-role_id int [pk, increment]
-role_name varchar(50) [unique]
-}
-
-Table user_role_mapping {
-user_id int [ref: > users.user_id]
-role_id int [ref: > user_roles.role_id]
-indexes {
-(user_id, role_id) [pk]
-}
+user_id char(36) [pk, ref: - users.user_id]
+password_hash varchar(255) [not null]
+password_salt varchar(32)
+failed_attempts int [default: 0]
+last_failed_attempt timestamp
+lockout_end timestamp
+last_modified timestamp
 }
 
 Table user_sessions {
@@ -94,10 +81,6 @@ bank_code varchar(10)
 // Thay thế cho processed_messages.
 Table transfer_audit_logs {
 audit_id uuid [pk]
-
-// [THÊM CỘT] Khóa chống trùng lặp.
-// Nếu RabbitMQ gửi lại tin nhắn cũ, ta check correlation_id này trong bảng.
-// Nếu đã có -> Bỏ qua. Không cần bảng processed_messages riêng.
 correlation_id varchar(255) [unique, not null]
 
 user_id int
@@ -119,46 +102,71 @@ status varchar(20) [default: 'PENDING']
 }
 
 // =======================================================
-// DATABASE: transaction_db (Transaction Service - Orchestrator)
+// DATABASE: transaction_db (Transaction Service)
 // =======================================================
 
 Table transactions {
-tx_id int [pk, increment]
-sender_account_id int
-receiver_account_id int
-amount numeric
-description text
-tx_type varchar(20)
-status varchar(20)
-created_at timestamp
-
-// [THÊM CỘT] Để quản lý Saga State Machine
-// Thay vì tạo bảng riêng lưu trạng thái Saga, ta lưu thẳng vào Transaction
-correlation_id varchar(255) [unique] // ID duy nhất của luồng giao dịch
-current_step varchar(50) // STARTED -> DEBITED -> CREDITED -> COMPLETED
-failure_step varchar(50) // Bước bị lỗi nếu có
+transaction_id uuid [pk]
+sender_account_id varchar(255) [not null]
+receiver_account_id varchar(255) [not null]
+amount numeric(19,2) [not null]
+fee_amount numeric(19,2) [default: 0]
+description text [not null]
+transaction_type varchar(20) [not null]
+status varchar(20) [not null]
+transfer_type varchar(20)
+external_transaction_id varchar(255)
+destination_bank_code varchar(50)
+correlation_id varchar(255) [unique]
+current_step varchar(50)
+failure_step varchar(50)
+failure_reason text
+completed_at timestamp
+created_at timestamp [not null]
+updated_at timestamp
 }
 
 Table transaction_limits {
-account_id int [pk]
-daily_limit numeric
-monthly_limit numeric
+account_id varchar(255) [pk]
+daily_limit numeric(19,2) [not null, default: 50000000]
+daily_used numeric(19,2) [not null, default: 0]
+last_daily_reset timestamp
+monthly_limit numeric(19,2) [not null, default: 500000000]
+monthly_used numeric(19,2) [not null, default: 0]
+last_monthly_reset timestamp
+updated_at timestamp
 }
 
-Table fee_configurations {
+Table transaction_fees {
 fee_id int [pk, increment]
-tx_type varchar(20)
+transaction_type varchar(20)
 fee_amount numeric
 }
 
 // [BẢNG MỚI - BẮT BUỘC] Để điều phối Saga (Gửi lệnh sang Account/User)
 Table transaction_outbox_events {
 event_id uuid [pk]
-aggregate_id varchar(100)
-event_type varchar(100)
-payload jsonb
-created_at timestamp
-status varchar(20)
+aggregate_type varchar(100) [not null]
+aggregate_id varchar(100) [not null]
+event_type varchar(100) [not null]
+payload text [not null]
+status varchar(20) [not null, default: 'PENDING']
+retry_count int [default: 0]
+error_message text
+created_at timestamp [not null]
+processed_at timestamp
+}
+
+Table transfer_audit_logs {
+audit_id uuid [pk]
+correlation_id varchar(255) [unique, not null]
+user_id varchar(255)
+transaction_id uuid
+amount numeric(19,2)
+status varchar(20) [not null]
+risk_level varchar(20)
+failure_reason text
+created_at timestamp [not null]
 }
 
 // =======================================================

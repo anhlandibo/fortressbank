@@ -5,14 +5,19 @@
 
 -- Main Transactions Table (Saga State Machine)
 CREATE TABLE IF NOT EXISTS transactions (
-    tx_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    transaction_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     sender_account_id VARCHAR(255) NOT NULL,
     receiver_account_id VARCHAR(255) NOT NULL,
     amount NUMERIC(19, 2) NOT NULL,
     fee_amount NUMERIC(19, 2) DEFAULT 0.00,
     description TEXT NOT NULL,
-    tx_type VARCHAR(20) NOT NULL,
+    transaction_type VARCHAR(20) NOT NULL,
     status VARCHAR(20) NOT NULL,
+    
+    -- Transfer Type and External Transfer Fields
+    transfer_type VARCHAR(20),
+    external_transaction_id VARCHAR(255),
+    destination_bank_code VARCHAR(50),
     
     -- Saga Orchestration Fields
     correlation_id VARCHAR(255) UNIQUE,
@@ -25,13 +30,16 @@ CREATE TABLE IF NOT EXISTS transactions (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
     CONSTRAINT transactions_status_check CHECK (
-        status IN ('PENDING_OTP', 'PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'CANCELLED', 'OTP_EXPIRED')
+        status IN ('PENDING_OTP', 'PENDING', 'PROCESSING', 'COMPLETED', 'SUCCESS', 'FAILED', 'CANCELLED', 'OTP_EXPIRED', 'ROLLBACK_FAILED')
     ),
-    CONSTRAINT transactions_tx_type_check CHECK (
-        tx_type IN ('INTERNAL_TRANSFER', 'EXTERNAL_TRANSFER', 'BILL_PAYMENT', 'DEPOSIT', 'WITHDRAWAL')
+    CONSTRAINT transactions_transaction_type_check CHECK (
+        transaction_type IN ('INTERNAL_TRANSFER', 'EXTERNAL_TRANSFER', 'BILL_PAYMENT', 'DEPOSIT', 'WITHDRAWAL')
+    ),
+    CONSTRAINT transactions_transfer_type_check CHECK (
+        transfer_type IS NULL OR transfer_type IN ('INTERNAL', 'EXTERNAL')
     ),
     CONSTRAINT transactions_current_step_check CHECK (
-        current_step IS NULL OR current_step IN ('STARTED', 'OTP_VERIFIED', 'DEBITED', 'CREDITED', 'COMPLETED', 'ROLLING_BACK', 'ROLLED_BACK')
+        current_step IS NULL OR current_step IN ('STARTED', 'OTP_VERIFIED', 'DEBITED', 'CREDITED', 'COMPLETED', 'ROLLING_BACK', 'ROLLED_BACK', 'FAILED', 'ROLLBACK_FAILED')
     )
 );
 
@@ -46,35 +54,55 @@ CREATE INDEX IF NOT EXISTS idx_current_step ON transactions(current_step);
 CREATE TABLE IF NOT EXISTS transaction_limits (
     account_id VARCHAR(255) PRIMARY KEY,
     daily_limit NUMERIC(19, 2) NOT NULL DEFAULT 50000000.00,
+    daily_used NUMERIC(19, 2) NOT NULL DEFAULT 0.00,
+    last_daily_reset TIMESTAMP,
     monthly_limit NUMERIC(19, 2) NOT NULL DEFAULT 500000000.00,
-    daily_spent NUMERIC(19, 2) NOT NULL DEFAULT 0.00,
-    monthly_spent NUMERIC(19, 2) NOT NULL DEFAULT 0.00,
-    last_reset_date DATE NOT NULL DEFAULT CURRENT_DATE,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    monthly_used NUMERIC(19, 2) NOT NULL DEFAULT 0.00,
+    last_monthly_reset TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Fee Configuration Table
 CREATE TABLE IF NOT EXISTS transaction_fees (
-    fee_id SERIAL PRIMARY KEY,
-    tx_type VARCHAR(20) UNIQUE NOT NULL,
+    fee_id BIGSERIAL PRIMARY KEY,
+    transaction_type VARCHAR(20) UNIQUE NOT NULL,
     fee_amount NUMERIC(19, 2) NOT NULL DEFAULT 0.00,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
-    CONSTRAINT transaction_fees_tx_type_check CHECK (
-        tx_type IN ('INTERNAL_TRANSFER', 'EXTERNAL_TRANSFER', 'BILL_PAYMENT', 'DEPOSIT', 'WITHDRAWAL')
+    CONSTRAINT transaction_fees_transaction_type_check CHECK (
+        transaction_type IN ('INTERNAL_TRANSFER', 'EXTERNAL_TRANSFER', 'BILL_PAYMENT', 'DEPOSIT', 'WITHDRAWAL')
     )
 );
+
+-- Transaction OTPs Table
+-- Stores OTP codes for transaction verification
+CREATE TABLE IF NOT EXISTS transaction_otps (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    transaction_id UUID NOT NULL,
+    otp_code VARCHAR(6) NOT NULL,
+    phone_number VARCHAR(20) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NOT NULL,
+    verified BOOLEAN NOT NULL DEFAULT false,
+    verified_at TIMESTAMP,
+    attempt_count INT NOT NULL DEFAULT 0,
+    
+    CONSTRAINT fk_transaction_otp FOREIGN KEY (transaction_id) REFERENCES transactions(transaction_id) ON DELETE CASCADE
+);
+
+-- Index for OTP lookup
+CREATE INDEX IF NOT EXISTS idx_otp_transaction ON transaction_otps(transaction_id);
+CREATE INDEX IF NOT EXISTS idx_otp_expires ON transaction_otps(expires_at);
 
 -- Outbox Events Table (Transactional Outbox Pattern)
 -- Ensures exactly-once delivery to RabbitMQ
 CREATE TABLE IF NOT EXISTS outbox_events (
     event_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    aggregate_type VARCHAR(100) NOT NULL, -- Transaction, User, Account
     aggregate_id VARCHAR(100) NOT NULL, -- transaction_id or user_id
-    aggregate_type VARCHAR(50) NOT NULL, -- Transaction, User, Account
     event_type VARCHAR(100) NOT NULL, -- TransactionCreated, OTPGenerated, DebitAccount, CreditAccount
-    payload JSONB NOT NULL,
+    payload TEXT NOT NULL, -- JSON payload as text
     
     -- Event Processing Status
     status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
@@ -90,8 +118,8 @@ CREATE TABLE IF NOT EXISTS outbox_events (
 );
 
 -- Indexes for outbox processing
-CREATE INDEX IF NOT EXISTS idx_outbox_status ON outbox_events(status, created_at);
-CREATE INDEX IF NOT EXISTS idx_outbox_aggregate ON outbox_events(aggregate_id, aggregate_type);
+CREATE INDEX IF NOT EXISTS idx_status_created ON outbox_events(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_aggregate ON outbox_events(aggregate_type, aggregate_id);
 
 -- Transfer Audit Logs (Idempotency + History)
 -- Prevents duplicate processing of RabbitMQ messages
@@ -123,10 +151,10 @@ CREATE INDEX IF NOT EXISTS idx_audit_correlation ON transfer_audit_logs(correlat
 CREATE INDEX IF NOT EXISTS idx_audit_user_date ON transfer_audit_logs(user_id, created_at);
 
 -- Initial fee configuration data
-INSERT INTO transaction_fees (tx_type, fee_amount) VALUES 
+INSERT INTO transaction_fees (transaction_type, fee_amount) VALUES 
     ('INTERNAL_TRANSFER', 0.0),
     ('EXTERNAL_TRANSFER', 5000.0),
     ('BILL_PAYMENT', 2000.0),
     ('DEPOSIT', 0.0),
     ('WITHDRAWAL', 3000.0)
-ON CONFLICT (tx_type) DO NOTHING;
+ON CONFLICT (transaction_type) DO NOTHING;

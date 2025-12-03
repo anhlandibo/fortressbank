@@ -64,8 +64,8 @@ public class TransferEndpoint {
      * 
      * SOAP Request:
      * <TransferRequest>
-     *   <fromAccountId>ACC001</fromAccountId>
-     *   <toAccountId>ACC002</toAccountId>
+     *   <senderAccountId>ACC001</senderAccountId>
+     *   <receiverAccountId>ACC002</receiverAccountId>
      *   <amount>1000.00</amount>
      *   <currency>VND</currency>
      *   <deviceFingerprint>...</deviceFingerprint>
@@ -81,8 +81,8 @@ public class TransferEndpoint {
 
         TransferRequestType transferRequest = request.getValue();
         log.info("SOAP Transfer request: {} → {} amount {}", 
-                transferRequest.getFromAccountId(), 
-                transferRequest.getToAccountId(), 
+                transferRequest.getSenderAccountId(), 
+                transferRequest.getReceiverAccountId(), 
                 transferRequest.getAmount());
 
         try {
@@ -94,8 +94,8 @@ public class TransferEndpoint {
 
             // Build internal transfer request
             TransferRequest internalRequest = new TransferRequest();
-            internalRequest.setFromAccountId(transferRequest.getFromAccountId());
-            internalRequest.setToAccountId(transferRequest.getToAccountId());
+            internalRequest.setSenderAccountId(transferRequest.getSenderAccountId());
+            internalRequest.setReceiverAccountId(transferRequest.getReceiverAccountId());
             internalRequest.setAmount(transferRequest.getAmount());
 
             // Call existing AccountService (handles risk assessment, OTP, etc.)
@@ -145,8 +145,8 @@ public class TransferEndpoint {
                 String userId = (String) messageContext.getProperty("userId");
                 auditService.logTransfer(
                         userId,
-                        transferRequest.getFromAccountId(),
-                        transferRequest.getToAccountId(),
+                        transferRequest.getSenderAccountId(),
+                        transferRequest.getReceiverAccountId(),
                         transferRequest.getAmount(),
                         TransferStatus.FAILED,
                         null,
@@ -222,8 +222,8 @@ public class TransferEndpoint {
     // JAXB Types (simplified, normally generated from XSD)
     
     public static class TransferRequestType {
-        private String fromAccountId;
-        private String toAccountId;
+        private String senderAccountId;
+        private String receiverAccountId;
         private BigDecimal amount;
         private String currency;
         private String deviceFingerprint;
@@ -231,10 +231,10 @@ public class TransferEndpoint {
         private String location;
 
         // Getters and setters
-        public String getFromAccountId() { return fromAccountId; }
-        public void setFromAccountId(String fromAccountId) { this.fromAccountId = fromAccountId; }
-        public String getToAccountId() { return toAccountId; }
-        public void setToAccountId(String toAccountId) { this.toAccountId = toAccountId; }
+        public String getSenderAccountId() { return senderAccountId; }
+        public void setSenderAccountId(String senderAccountId) { this.senderAccountId = senderAccountId; }
+        public String getReceiverAccountId() { return receiverAccountId; }
+        public void setReceiverAccountId(String receiverAccountId) { this.receiverAccountId = receiverAccountId; }
         public BigDecimal getAmount() { return amount; }
         public void setAmount(BigDecimal amount) { this.amount = amount; }
         public String getCurrency() { return currency; }
