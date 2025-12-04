@@ -104,8 +104,8 @@ class AccountServiceIntegrationTest extends AbstractIntegrationTest {
         when(riskEngineService.assessRisk(any(RiskAssessmentRequest.class))).thenReturn(lowRisk);
 
         TransferRequest request = new TransferRequest();
-        request.setFromAccountId(aliceAccount.getAccountId());
-        request.setToAccountId(bobAccount.getAccountId());
+        request.setSenderAccountId(aliceAccount.getAccountId());
+        request.setReceiverAccountId(bobAccount.getAccountId());
         request.setAmount(BigDecimal.valueOf(100.00));
 
         Object result = accountService.handleTransfer(request, "alice", "dev1", "ip1", "loc1");
@@ -132,8 +132,8 @@ class AccountServiceIntegrationTest extends AbstractIntegrationTest {
         when(riskEngineService.assessRisk(any(RiskAssessmentRequest.class))).thenReturn(mediumRisk);
 
         TransferRequest request = new TransferRequest();
-        request.setFromAccountId(aliceAccount.getAccountId());
-        request.setToAccountId(bobAccount.getAccountId());
+        request.setSenderAccountId(aliceAccount.getAccountId());
+        request.setReceiverAccountId(bobAccount.getAccountId());
         request.setAmount(BigDecimal.valueOf(100.00));
 
         Object result = accountService.handleTransfer(request, "alice", "dev1", "ip1", "loc1");

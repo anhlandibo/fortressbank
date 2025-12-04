@@ -149,8 +149,8 @@ class AccountServiceTest {
     @DisplayName("handleTransfer throws FORBIDDEN when user does not own source account")
     void testHandleTransfer_ThrowsForbidden_WhenUserDoesNotOwnAccount() {
         TransferRequest request = new TransferRequest();
-        request.setFromAccountId("acc-123");
-        request.setToAccountId("acc-456");
+        request.setSenderAccountId("acc-123");
+        request.setReceiverAccountId("acc-456");
         request.setAmount(BigDecimal.valueOf(100.00));
 
         when(accountRepository.findById("acc-123")).thenReturn(Optional.of(aliceAccount));
@@ -167,8 +167,8 @@ class AccountServiceTest {
     @DisplayName("handleTransfer throws INSUFFICIENT_FUNDS")
     void testHandleTransfer_ThrowsInsufficientFunds() {
         TransferRequest request = new TransferRequest();
-        request.setFromAccountId("acc-123");
-        request.setToAccountId("acc-456");
+        request.setSenderAccountId("acc-123");
+        request.setReceiverAccountId("acc-456");
         request.setAmount(BigDecimal.valueOf(5000.00)); // > 1000 balance
 
         when(accountRepository.findById("acc-123")).thenReturn(Optional.of(aliceAccount));
@@ -183,8 +183,8 @@ class AccountServiceTest {
     @DisplayName("handleTransfer executes immediately when risk is LOW")
     void testHandleTransfer_ExecutesImmediately_WhenLowRisk() {
         TransferRequest request = new TransferRequest();
-        request.setFromAccountId("acc-123");
-        request.setToAccountId("acc-456");
+        request.setSenderAccountId("acc-123");
+        request.setReceiverAccountId("acc-456");
         request.setAmount(BigDecimal.valueOf(100.00));
 
         when(accountRepository.findById("acc-123")).thenReturn(Optional.of(aliceAccount));
@@ -208,8 +208,8 @@ class AccountServiceTest {
     @DisplayName("handleTransfer returns Challenge when risk is MEDIUM")
     void testHandleTransfer_ReturnsChallenge_WhenMediumRisk() {
         TransferRequest request = new TransferRequest();
-        request.setFromAccountId("acc-123");
-        request.setToAccountId("acc-456");
+        request.setSenderAccountId("acc-123");
+        request.setReceiverAccountId("acc-456");
         request.setAmount(BigDecimal.valueOf(100.00));
 
         when(accountRepository.findById("acc-123")).thenReturn(Optional.of(aliceAccount));
@@ -264,8 +264,8 @@ class AccountServiceTest {
         request.setOtpCode("wrong-code");
         
         TransferRequest transferRequest = new TransferRequest();
-        transferRequest.setFromAccountId("acc-123");
-        transferRequest.setToAccountId("acc-456");
+        transferRequest.setSenderAccountId("acc-123");
+        transferRequest.setReceiverAccountId("acc-456");
         transferRequest.setAmount(BigDecimal.valueOf(100.00));
         
         PendingTransfer pending = new PendingTransfer(
@@ -287,8 +287,8 @@ class AccountServiceTest {
         verifyRequest.setOtpCode("123456");
         
         TransferRequest transferRequest = new TransferRequest();
-        transferRequest.setFromAccountId("acc-123");
-        transferRequest.setToAccountId("acc-456");
+        transferRequest.setSenderAccountId("acc-123");
+        transferRequest.setReceiverAccountId("acc-456");
         transferRequest.setAmount(BigDecimal.valueOf(100.00));
         
         PendingTransfer pending = new PendingTransfer(

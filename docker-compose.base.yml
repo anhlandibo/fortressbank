@@ -9,6 +9,4 @@ volumes:
   referencedb_data:
   transactiondb_data:
   accountdb_data:
-
   keycloak_db_data:
-  accountdb_data:
