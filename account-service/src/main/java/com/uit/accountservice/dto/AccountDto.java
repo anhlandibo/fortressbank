@@ -1,5 +1,6 @@
 package com.uit.accountservice.dto;
 
+import com.uit.accountservice.entity.AccountStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -18,4 +19,6 @@ public class AccountDto {
     private String accountType;
     private BigDecimal balance;
     private LocalDateTime createdAt;
+    private String accountNumber;
+    private String accountStatus;
 }

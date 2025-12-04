@@ -1,6 +1,9 @@
 package com.uit.accountservice.entity;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -20,17 +23,33 @@ public class Account {
 
     @Id
     @UuidGenerator
-    @Column(name = "account_id", columnDefinition = "VARCHAR(255)")
+    @Column(name = "account_id")
     private String accountId;
 
+    @NotNull
+    @Size(min = 10, max = 20)
+    @Column(name = "account_number", unique = true, nullable = false, length = 20)
+    private String accountNumber;
+
+    @NotNull
     @Column(name = "user_id", nullable = false)
     private String userId;
 
+    @NotNull
     @Column(name = "account_type", nullable = false)
     private String accountType;
 
+    @NotNull
+    @DecimalMin(value = "0.0", inclusive = true)
     @Column(nullable = false)
     private BigDecimal balance;
+
+    @Column(name = "pin_hash")
+    private String pinHash;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private AccountStatus status;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

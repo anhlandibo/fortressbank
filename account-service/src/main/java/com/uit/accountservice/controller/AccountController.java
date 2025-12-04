@@ -1,7 +1,6 @@
 package com.uit.accountservice.controller;
 
-import com.uit.accountservice.dto.request.TransferRequest;
-import com.uit.accountservice.dto.request.VerifyTransferRequest;
+import com.uit.accountservice.dto.request.*;
 import com.uit.accountservice.entity.TransferAuditLog;
 import com.uit.accountservice.mapper.AccountMapper;
 import com.uit.accountservice.repository.AccountRepository;
@@ -9,9 +8,13 @@ import com.uit.accountservice.security.RequireRole;
 import com.uit.accountservice.service.AccountService;
 import com.uit.accountservice.service.TransferAuditService;
 import com.uit.accountservice.dto.AccountDto;
+import com.uit.sharedkernel.api.ApiResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import jakarta.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
@@ -59,6 +62,7 @@ public class AccountController {
      * Get a specific account by ID with ownership validation.
      * Users can only access accounts they own.
      */
+    /*
     @GetMapping("/{accountId}")
     @PreAuthorize("@accountService.isOwner(#accountId, authentication.name)")
     @RequireRole("user")
@@ -68,6 +72,7 @@ public class AccountController {
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
+    */
     
     @GetMapping("/dashboard")
     @RequireRole("admin")  // Like requireRole('admin') in Express
@@ -176,5 +181,59 @@ public class AccountController {
             "periodMinutes", minutes,
             "timestamp", LocalDateTime.now()
         ));
+    }
+
+    // Section of BoLac
+    private String getCurrentUserId() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication.getName(); // Trả về 'sub' (userId)
+    }
+
+    // GET /accounts
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<AccountDto>>> getMyAccounts() {
+        List<AccountDto> accounts = accountService.getMyAccounts(getCurrentUserId());
+        return ResponseEntity.ok(ApiResponse.success(accounts));
+    }
+
+    @GetMapping("/{accountId}")
+    public ResponseEntity<ApiResponse<AccountDto>> getAccountDetail(@PathVariable("accountId") String accountId) {
+        AccountDto account = accountService.getAccountDetail(accountId, getCurrentUserId());
+        return ResponseEntity.ok(ApiResponse.success(account));
+    }
+
+    // GET /accounts/{accountId}/balance
+    @GetMapping("/balance/{accountId}")
+    public ResponseEntity<ApiResponse<Map<String, BigDecimal>>> getBalance(@PathVariable("accountId") String accountId) {
+        BigDecimal balance = accountService.getBalance(accountId, getCurrentUserId());
+        return ResponseEntity.ok(ApiResponse.success(Map.of("balance", balance)));
+    }
+
+    // POST /accounts
+    public ResponseEntity<ApiResponse<AccountDto>> createAccount(@Valid @RequestBody CreateAccountRequest request) {
+        AccountDto newAccount = accountService.createAccount(getCurrentUserId(), request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(newAccount));
+    }
+
+    // DELETE /accounts/{id}
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> closeAccount(@PathVariable("id") String id) {
+        accountService.closeAccount(id, getCurrentUserId());
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    // POST /accounts/{id}/pin
+    @PostMapping("/{id}/pin")
+    public ResponseEntity<ApiResponse<Void>> createPin(@PathVariable("id") String id, @Valid @RequestBody PinRequest request) {
+        accountService.createPin(id, getCurrentUserId(), request.newPin());
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(null));
+    }
+
+    // PUT /accounts/{id}/pin
+    @PutMapping("/{id}/pin")
+    public ResponseEntity<ApiResponse<Void>> updatePin(@PathVariable("id") String id, @Valid @RequestBody UpdatePinRequest request) {
+        accountService.updatePin(id, getCurrentUserId(), request.oldPin(), request.newPin());
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 }

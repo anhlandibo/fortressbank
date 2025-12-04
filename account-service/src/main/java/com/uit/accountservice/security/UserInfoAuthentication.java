@@ -4,6 +4,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -22,9 +23,25 @@ public class UserInfoAuthentication implements Authentication {
     @SuppressWarnings("unchecked")
     public UserInfoAuthentication(Map<String, Object> userInfo) {
         this.userInfo = userInfo;
-        
-        // Extract roles from realm_access
-        List<String> roles = (List<String>) userInfo.getOrDefault("realm_access", List.of());
+
+        List<String> roles = new ArrayList<>();
+
+        // --- SỬA LỖI TẠI ĐÂY ---
+        // 1. Lấy object "realm_access" ra dưới dạng Map
+        if (userInfo.containsKey("realm_access")) {
+            Object realmAccessObj = userInfo.get("realm_access");
+            if (realmAccessObj instanceof Map) {
+                Map<String, Object> realmAccess = (Map<String, Object>) realmAccessObj;
+
+                // 2. Lấy list "roles" từ bên trong Map đó
+                if (realmAccess.containsKey("roles")) {
+                    Object rolesObj = realmAccess.get("roles");
+                    if (rolesObj instanceof List) {
+                        roles = (List<String>) rolesObj;
+                    }
+                }
+            }
+        }
         this.authorities = roles.stream()
                 .map(role -> new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()))
                 .collect(Collectors.toList());
