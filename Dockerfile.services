@@ -11,6 +11,7 @@ COPY user-service ./user-service
 COPY notification-service ./notification-service
 COPY discovery ./discovery
 COPY config-server ./config-server
+COPY keycloak-extensions ./keycloak-extensions
 COPY shared-kernel ./shared-kernel
 COPY risk-engine ./risk-engine
 COPY reference-service ./reference-service

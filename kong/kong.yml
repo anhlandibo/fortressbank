@@ -49,6 +49,14 @@ plugins:
     hide_client_headers: false
     fault_tolerant: true   # Continue if rate limit service fails
 
+# Single-device enforcement plugin (validates deviceId against Keycloak)
+- name: single-device
+  config:
+    keycloak_url: "http://keycloak:8080"
+    realm: "fortressbank-realm"
+    # TODO: replace with a secure service account token or implement OAuth client credentials flow
+    admin_token: "CHANGE_ME_SINGLE_DEVICE_ADMIN_TOKEN"
+
 # Account Service Rate Limiting - Stricter for financial operations
 - name: rate-limiting
   service: account-service

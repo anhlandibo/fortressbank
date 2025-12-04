@@ -698,6 +698,19 @@
         "claim.name" : "realm_access",
         "jsonType.label" : "String"
       }
+    }, {
+      "id" : "f4f97e6a-7f91-4e4b-9b1f-111111111111",
+      "name" : "Device ID",
+      "protocol" : "openid-connect",
+      "protocolMapper" : "device-id-protocol-mapper",
+      "consentRequired" : false,
+      "config" : {
+        "userinfo.token.claim" : "false",
+        "id.token.claim" : "true",
+        "access.token.claim" : "true",
+        "claim.name" : "deviceId",
+        "jsonType.label" : "String"
+      }
     } ],
     "defaultClientScopes" : [ "web-origins", "acr", "address", "phone", "profile", "offline_access", "roles", "microprofile-jwt", "email" ],
     "optionalClientScopes" : [ ]

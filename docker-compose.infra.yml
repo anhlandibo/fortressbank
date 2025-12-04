@@ -100,6 +100,7 @@ services:
     volumes:
       - ./keycloak/realms:/opt/keycloak/data/import
       - ./keycloak/realms:/opt/keycloak/data/export
+      - ./keycloak-extensions/target/keycloak-extensions-1.0.0.jar:/opt/keycloak/providers/keycloak-extensions-1.0.0.jar:ro
     depends_on:
       keycloak-db:
         condition: service_healthy
