@@ -1,4 +1,4 @@
-package com.uit.transactionservice.entity;
+package com.uit.sharedkernel.outbox;
 
 public enum OutboxEventStatus {
     PENDING,       // Chưa xử lý - mới tạo

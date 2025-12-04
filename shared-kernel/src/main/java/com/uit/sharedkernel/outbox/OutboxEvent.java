@@ -1,6 +1,8 @@
-package com.uit.transactionservice.entity;
+package com.uit.sharedkernel.outbox;
 
+import com.uit.sharedkernel.outbox.OutboxEventStatus;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotEmpty;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 
@@ -23,14 +25,25 @@ public class OutboxEvent {
     @Column(name = "event_id")
     private java.util.UUID eventId;
 
+    @NotEmpty
     @Column(name = "aggregate_type", length = 100, nullable = false)
     private String aggregateType; // 'transaction', 'account', etc.
 
+    @NotEmpty
     @Column(name = "aggregate_id", length = 100, nullable = false)
     private String aggregateId; // ID của bản ghi
 
+    @NotEmpty
     @Column(name = "event_type", length = 100, nullable = false)
     private String eventType; // 'TransactionCreated', 'BalanceUpdated', etc.
+    
+    @NotEmpty
+    @Column(name = "exchange", nullable = false)
+    private String exchange;
+
+    @NotEmpty
+    @Column(name = "routing_key", nullable = false)
+    private String routingKey;
 
     @Column(nullable = false, columnDefinition = "TEXT")
     private String payload; // JSON payload as text

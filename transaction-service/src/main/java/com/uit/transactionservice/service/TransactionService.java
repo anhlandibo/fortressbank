@@ -1,6 +1,12 @@
 package com.uit.transactionservice.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uit.sharedkernel.outbox.OutboxEvent;
+import com.uit.sharedkernel.outbox.OutboxEventStatus;
+import com.uit.sharedkernel.outbox.repository.OutboxEventRepository;
+import com.uit.sharedkernel.constants.RabbitMQConstants;
+import com.uit.sharedkernel.exception.AppException;
+import com.uit.sharedkernel.exception.ErrorCode;
 import com.uit.transactionservice.client.AccountServiceClient;
 import com.uit.transactionservice.client.dto.AccountBalanceResponse;
 import com.uit.transactionservice.client.dto.InternalTransferResponse;
@@ -12,7 +18,9 @@ import com.uit.transactionservice.exception.AccountServiceException;
 import com.uit.transactionservice.exception.InsufficientBalanceException;
 import com.uit.transactionservice.mapper.TransactionMapper;
 import com.uit.transactionservice.publisher.ExternalTransferPublisher;
-import com.uit.transactionservice.repository.*;
+import com.uit.transactionservice.repository.TransactionFeeRepository;
+import com.uit.transactionservice.repository.TransactionLimitRepository;
+import com.uit.transactionservice.repository.TransactionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -205,44 +213,6 @@ public class TransactionService {
     }
 
     /**
-     * Create outbox event
-     */
-    private void createOutboxEvent(Transaction transaction, String eventType) {
-        try {
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("transactionId", transaction.getTransactionId());
-            payload.put("correlationId", transaction.getCorrelationId()); // For idempotency
-            payload.put("senderAccountId", transaction.getSenderAccountId());
-            payload.put("receiverAccountId", transaction.getReceiverAccountId());
-            payload.put("amount", transaction.getAmount());
-            payload.put("feeAmount", transaction.getFeeAmount());
-            payload.put("type", transaction.getTransactionType());
-            payload.put("status", transaction.getStatus());
-            payload.put("currentStep", transaction.getCurrentStep());
-            payload.put("timestamp", LocalDateTime.now());
-
-            String payloadJson = objectMapper.writeValueAsString(payload);
-
-            OutboxEvent event = OutboxEvent.builder()
-                    .aggregateType("transaction")
-                    .aggregateId(transaction.getTransactionId().toString())
-                    .eventType(eventType)
-                    .payload(payloadJson)
-                    .status(OutboxEventStatus.PENDING)
-                    .retryCount(0)
-                    .build();
-
-            outboxEventRepository.save(event);
-            log.info("Outbox event created: {} for transaction: {} with correlation ID: {}", 
-                    eventType, transaction.getTransactionId(), transaction.getCorrelationId());
-
-        } catch (Exception e) {
-            log.error("Failed to create outbox event", e);
-            throw new RuntimeException("Failed to create outbox event", e);
-        }
-    }
-
-    /**
      * Send OTP notification via event
      */
     private void sendOTPNotification(UUID transactionId, String phoneNumber, String otpCode) {
@@ -261,6 +231,8 @@ public class TransactionService {
                     .aggregateId(transactionId.toString())
                     .aggregateType("Transaction")
                     .eventType("OTPGenerated")
+                    .exchange(RabbitMQConstants.TRANSACTION_EXCHANGE)
+                    .routingKey("otp.generated")
                     .payload(payloadJson)
                     .status(OutboxEventStatus.PENDING)
                     .build();
@@ -307,11 +279,18 @@ public class TransactionService {
                 transaction = transactionRepository.save(transaction);
                 log.warn("Maximum OTP attempts reached for transaction: {}", transactionId);
             } else {
-                transaction.setStatus(TransactionStatus.FAILED);
-                transaction.setFailureReason(result.getMessage());
-                transaction = transactionRepository.save(transaction);
-                log.warn("OTP verification failed for transaction: {} - {}", transactionId, result.getMessage());
-            }
+        // --- LOGIC ĐÃ SỬA ---
+        
+        // 1. Chỉ log cảnh báo
+        log.warn("User entered invalid OTP for transaction: {}. {}", transactionId, result.getMessage());
+
+        // 2. KHÔNG setStatus(FAILED)
+        // 3. KHÔNG save transaction xuống DB
+        
+        // 4. Ném lỗi để Controller/GlobalHandler trả về 400 Bad Request
+        // Sử dụng ErrorCode có sẵn trong Shared Kernel
+        throw new AppException(ErrorCode.INVALID_OTP);
+    }
             
             // Return response with failure reason instead of throwing exception
             return transactionMapper.toResponse(transaction);
@@ -545,6 +524,8 @@ public class TransactionService {
                     .aggregateId(transaction.getTransactionId().toString())
                     .aggregateType("Transaction")
                     .eventType(eventType)
+                    .exchange(RabbitMQConstants.TRANSACTION_EXCHANGE)
+                    .routingKey("notification." + eventType)
                     .payload(payloadJson)
                     .status(OutboxEventStatus.PENDING)
                     .build();

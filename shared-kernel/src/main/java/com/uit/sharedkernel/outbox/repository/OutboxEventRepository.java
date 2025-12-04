@@ -1,7 +1,7 @@
-package com.uit.transactionservice.repository;
+package com.uit.sharedkernel.outbox.repository;
 
-import com.uit.transactionservice.entity.OutboxEvent;
-import com.uit.transactionservice.entity.OutboxEventStatus;
+import com.uit.sharedkernel.outbox.OutboxEvent;
+import com.uit.sharedkernel.outbox.OutboxEventStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

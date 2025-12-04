@@ -102,6 +102,8 @@ CREATE TABLE IF NOT EXISTS outbox_events (
     aggregate_type VARCHAR(100) NOT NULL, -- Transaction, User, Account
     aggregate_id VARCHAR(100) NOT NULL, -- transaction_id or user_id
     event_type VARCHAR(100) NOT NULL, -- TransactionCreated, OTPGenerated, DebitAccount, CreditAccount
+    exchange VARCHAR(255) NOT NULL,
+    routing_key VARCHAR(255) NOT NULL,
     payload TEXT NOT NULL, -- JSON payload as text
     
     -- Event Processing Status

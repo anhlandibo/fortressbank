@@ -3,7 +3,6 @@ package com.uit.sharedkernel.constants;
 public class RabbitMQConstants {
     // Exchange
     public static final String TRANSACTION_EXCHANGE = "transaction-exchange";
-    public static final String NOTIFICATION_EXCHANGE_NAME = "notifications.exchange";
     
     // Routing Keys
     public static final String TRANSACTION_CREATED = "transaction.created";

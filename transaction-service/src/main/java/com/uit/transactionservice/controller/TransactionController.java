@@ -38,7 +38,7 @@ public class TransactionController {
      * POST /transactions/transfers
      */
     @PostMapping("/transfers")
-    @RequireRole("user")
+    // @RequireRole("user")
     public ResponseEntity<ApiResponse<TransactionResponse>> createTransfer(
             @Valid @RequestBody CreateTransferRequest request,
           
@@ -77,7 +77,7 @@ public class TransactionController {
      * POST /transactions/verify-otp
      */
     @PostMapping("/verify-otp")
-    @RequireRole("user")
+    // @RequireRole("user")
     public ResponseEntity<ApiResponse<TransactionResponse>> verifyOTP(
             @Valid @RequestBody VerifyOTPRequest request) {
 
