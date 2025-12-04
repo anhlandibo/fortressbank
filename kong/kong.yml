@@ -28,6 +28,33 @@ services:
         paths:
           - /accounts
         strip_path: false
+  # public auth endpoints
+  - name: user-auth-service
+    url: http://user-service:4000
+    routes:
+      - name: user-auth-route
+        paths:
+          - /auth/
+        strip_path: false
+
+  # protected user endpoints
+  - name: user-main-service
+    url: http://user-service:4000
+    routes:
+      - name: user-main-route
+        paths:
+          - /users/
+          - /roles/
+        strip_path: false
+
+  # protected account
+  - name: account-service
+    url: http://account-service:4001
+    routes:
+      - name: account-service-route
+        paths:
+          - /accounts
+        strip_path: false
 
   # protected transaction service
   - name: transaction-service

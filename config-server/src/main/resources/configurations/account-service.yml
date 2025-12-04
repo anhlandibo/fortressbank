@@ -3,17 +3,19 @@ server:
   max-http-request-header-size: 64KB
 
 spring:
-#   security:
-#     oauth2:
-#       resourceserver:
-#         jwt:
-#           issuer-uri: http://keycloak:8080/realms/fortressbank-realm
+  #   security:
+  #     oauth2:
+  #       resourceserver:
+  #         jwt:
+  #           issuer-uri: http://keycloak:8080/realms/fortressbank-realm
 
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://account-service-db:5432/accountdb}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
     password: ${SPRING_DATASOURCE_PASSWORD:123456}
     driver-class-name: org.postgresql.Driver
+jwt:
+  issuer-uri: http://keycloak:8080/realms/fortressbank-realm
 
   data:
     redis:
