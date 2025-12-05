@@ -7,6 +7,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 public interface UserService {
 
     UserResponse getCurrentUser(Jwt jwt);
-
     UserResponse updateCurrentUser(Jwt jwt, UpdateUserRequest request);
+    UserResponse getUserById(String id);
+
 }

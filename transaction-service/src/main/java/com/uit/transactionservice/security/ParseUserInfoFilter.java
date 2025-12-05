@@ -10,6 +10,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Map;
 
@@ -26,51 +27,56 @@ public class ParseUserInfoFilter implements Filter {
         HttpServletRequest httpRequest = (HttpServletRequest) request;
         HttpServletResponse httpResponse = (HttpServletResponse) response;
 
-        String userInfoHeader = httpRequest.getHeader("X-Userinfo");
-
-        log.debug("Received X-Userinfo header present: {}", userInfoHeader != null);
-
-        // Temporarily bypass authentication
-        if (userInfoHeader == null || userInfoHeader.isEmpty()) {
-            //          httpResponse.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            // httpResponse.setContentType("application/json");
-            // httpResponse.getWriter().write("{\"error\":\"Unauthorized: Missing user information.\"}");
-
-            Map<String, Object> mockUserInfo = Map.of(
-                "sub", "test-user-id",
-                "preferred_username", "testuser",
-                "email", "test@example.com",
-                "realm_access", Map.of("roles", java.util.List.of("user", "admin"))
-            );
-            httpRequest.setAttribute("userInfo", mockUserInfo);
-            chain.doFilter(request, response);
-            return;
-        }
+        String authHeader = httpRequest.getHeader("Authorization");
+        Map<String, Object> userInfo = null;
 
         try {
-            String decodedHeader = new String(Base64.getDecoder().decode(userInfoHeader));
-            log.debug("Decoded X-Userinfo header: {}", decodedHeader);
-            
-            @SuppressWarnings("unchecked")
-            Map<String, Object> userInfo = objectMapper.readValue(decodedHeader, Map.class);
-            
-            // Store in request attribute (for backward compatibility)
-            httpRequest.setAttribute("userInfo", userInfo);
-            
-            // Set Spring Security authentication context (for @PreAuthorize)
-            UserInfoAuthentication authentication = new UserInfoAuthentication(userInfo);
-            SecurityContextHolder.getContext().setAuthentication(authentication);
-            
-            chain.doFilter(request, response);
-            
+            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                // 1. Lấy token và cắt khoảng trắng thừa
+                String token = authHeader.substring(7).trim();
+
+                // LOG ĐỂ DEBUG: In ra 10 ký tự đầu xem có bị dính dấu nháy " không
+                log.info("Processing Token: {}...", token.substring(0, Math.min(token.length(), 10)));
+
+                String[] chunks = token.split("\\.");
+
+                if (chunks.length >= 2) {
+                    // 2. Decode phần Payload (Chunk 1)
+                    Base64.Decoder decoder = Base64.getUrlDecoder();
+                    // Lưu ý: Dùng StandardCharsets.UTF_8 để tránh lỗi encoding
+                    String payload = new String(decoder.decode(chunks[1]), StandardCharsets.UTF_8);
+
+                    // LOG ĐỂ DEBUG: Xem payload giải mã ra cái gì
+                    log.info("Decoded Payload: {}", payload);
+
+                    // 3. Parse JSON
+                    userInfo = objectMapper.readValue(payload, Map.class);
+                } else {
+                    log.error("Invalid JWT Token format: Not enough chunks (found {})", chunks.length);
+                }
+            }
+
+            if (userInfo != null) {
+                httpRequest.setAttribute("userInfo", userInfo);
+                UserInfoAuthentication authentication = new UserInfoAuthentication(userInfo);
+                SecurityContextHolder.getContext().setAuthentication(authentication);
+                chain.doFilter(request, response);
+            } else {
+                log.warn("Unauthorized: Token is missing or invalid structure");
+                httpResponse.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                httpResponse.setContentType("application/json");
+                httpResponse.getWriter().write("{\"error\":\"Unauthorized: Invalid Token\"}");
+            }
+
         } catch (Exception e) {
-            log.error("Failed to parse X-Userinfo header. Raw value: '{}'", userInfoHeader, e);
+            // In toàn bộ lỗi ra console để bạn xem
+            log.error("CRITICAL ERROR parsing token: ", e);
 
             httpResponse.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             httpResponse.setContentType("application/json");
-            httpResponse.getWriter().write("{\"error\":\"Bad Request: Malformed user information.\"}");
+            // Trả về lỗi chi tiết hơn cho Postman
+            httpResponse.getWriter().write("{\"error\":\"Bad Request: " + e.getMessage() + "\"}");
         } finally {
-            // Clear security context after request
             SecurityContextHolder.clearContext();
         }
     }

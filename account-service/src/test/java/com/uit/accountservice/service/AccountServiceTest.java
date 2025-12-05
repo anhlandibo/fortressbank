@@ -6,10 +6,10 @@ import com.uit.accountservice.dto.request.TransferRequest;
 import com.uit.accountservice.dto.request.VerifyTransferRequest;
 import com.uit.accountservice.dto.response.ChallengeResponse;
 import com.uit.accountservice.entity.Account;
+import com.uit.accountservice.entity.enums.TransferStatus;
 import com.uit.accountservice.mapper.AccountMapper;
 import com.uit.accountservice.repository.AccountRepository;
 import com.uit.accountservice.riskengine.RiskEngineService;
-import com.uit.accountservice.riskengine.dto.RiskAssessmentRequest;
 import com.uit.accountservice.riskengine.dto.RiskAssessmentResponse;
 import com.uit.sharedkernel.exception.AppException;
 import com.uit.sharedkernel.exception.ErrorCode;
@@ -27,7 +27,6 @@ import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -201,7 +200,7 @@ class AccountServiceTest {
 
         assertThat(result).isInstanceOf(AccountDto.class);
         verify(accountRepository, times(2)).save(any()); // Saves both accounts
-        verify(auditService).logTransfer(eq("alice"), any(), any(), any(), eq(com.uit.accountservice.entity.TransferStatus.COMPLETED), any(), any(), any(), any(), any(), any());
+        verify(auditService).logTransfer(eq("alice"), any(), any(), any(), eq(TransferStatus.COMPLETED), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -238,7 +237,7 @@ class AccountServiceTest {
         assertThat(response.getChallengeType()).isEqualTo("SMS_OTP");
         
         verify(valueOperations).set(startsWith("transfer:"), any(PendingTransfer.class), eq(5L), eq(TimeUnit.MINUTES));
-        verify(auditService).logTransfer(eq("alice"), any(), any(), any(), eq(com.uit.accountservice.entity.TransferStatus.PENDING), any(), any(), any(), any(), any(), any());
+        verify(auditService).logTransfer(eq("alice"), any(), any(), any(), eq(TransferStatus.PENDING), any(), any(), any(), any(), any(), any());
     }
     
     @Test

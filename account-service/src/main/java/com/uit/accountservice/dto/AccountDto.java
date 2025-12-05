@@ -18,4 +18,6 @@ public class AccountDto {
     private String accountType;
     private BigDecimal balance;
     private LocalDateTime createdAt;
+    private String accountNumber;
+    private String accountStatus;
 }

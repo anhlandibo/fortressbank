@@ -45,6 +45,14 @@ public class UserServiceImpl implements UserService {
         return toResponse(user);
     }
 
+    @Override
+    public UserResponse getUserById(String id) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        return toResponse(user);
+    }
+
+    // HELPERS
     private User createFromToken(String id, String username, String email, String name) {
         User user = new User();
         user.setId(id);
@@ -63,4 +71,6 @@ public class UserServiceImpl implements UserService {
                 user.getCreatedAt()
         );
     }
+
+
 }
