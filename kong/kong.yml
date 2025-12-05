@@ -28,6 +28,7 @@ services:
         paths:
           - /accounts
           - /beneficiaries
+          - /cards
         strip_path: false
 
   # reference-service

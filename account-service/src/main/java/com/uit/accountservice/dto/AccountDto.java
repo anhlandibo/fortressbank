@@ -1,6 +1,5 @@
 package com.uit.accountservice.dto;
 
-import com.uit.accountservice.entity.AccountStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;

@@ -1,5 +1,6 @@
 package com.uit.accountservice.entity;
 
+import com.uit.accountservice.entity.enums.AccountStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;

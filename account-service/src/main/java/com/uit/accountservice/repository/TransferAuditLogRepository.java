@@ -1,7 +1,7 @@
 package com.uit.accountservice.repository;
 
 import com.uit.accountservice.entity.TransferAuditLog;
-import com.uit.accountservice.entity.TransferStatus;
+import com.uit.accountservice.entity.enums.TransferStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;

@@ -1,4 +1,4 @@
-package com.uit.accountservice.entity;
+package com.uit.accountservice.entity.enums;
 
 public enum AccountStatus {
     ACTIVE, LOCKED, CLOSED

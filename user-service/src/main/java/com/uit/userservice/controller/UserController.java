@@ -42,4 +42,10 @@ public class UserController {
         authService.changePassword(request, userId, username);
         return ApiResponse.success(null);
     }
+
+    @GetMapping("/internal/{userId}")
+    // @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<UserResponse> getUserById(@PathVariable("userId") String userId) {
+        return ApiResponse.success(userService.getUserById(userId));
+    }
 }

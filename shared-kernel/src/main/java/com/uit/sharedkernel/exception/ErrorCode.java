@@ -14,6 +14,7 @@ public enum ErrorCode {
     /* User */
     USER_CREATION_FAILED(500, "User creation failed", HttpStatus.INTERNAL_SERVER_ERROR),
     USER_ALREADY_EXISTS(409, "User already existed", HttpStatus.CONFLICT),
+    USER_NOT_FOUND(404, "User not found", HttpStatus.NOT_FOUND),
 
     BAD_REQUEST(400, "Bad request", HttpStatus.BAD_REQUEST),
     INVALID_CREDENTIALS(400, "Invalid credentials", HttpStatus.BAD_REQUEST);

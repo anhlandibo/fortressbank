@@ -1,5 +1,6 @@
 package com.uit.accountservice.entity;
 
+import com.uit.accountservice.entity.enums.TransferStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
