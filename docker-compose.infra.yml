@@ -64,7 +64,6 @@ services:
     image: redis:6
     container_name: fortressbank-redis
     volumes:
-      # This 'redis_data' is defined in docker-compose.base.yml
       - redis_data:/data
     ports:
       - "6379:6379"

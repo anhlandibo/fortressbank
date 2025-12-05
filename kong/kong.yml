@@ -28,6 +28,7 @@ services:
         paths:
           - /accounts
         strip_path: false
+
   # public auth endpoints
   - name: user-auth-service
     url: http://user-service:4000

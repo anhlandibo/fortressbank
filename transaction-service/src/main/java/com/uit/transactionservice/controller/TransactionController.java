@@ -3,6 +3,7 @@ package com.uit.transactionservice.controller;
 import com.uit.sharedkernel.api.ApiResponse;
 import com.uit.transactionservice.dto.VerifyOTPRequest;
 import com.uit.transactionservice.dto.request.CreateTransferRequest;
+import com.uit.transactionservice.dto.request.ResendOtpRequest;
 import com.uit.transactionservice.dto.response.TransactionLimitResponse;
 import com.uit.transactionservice.dto.response.TransactionResponse;
 import com.uit.transactionservice.entity.TransactionStatus;
@@ -91,6 +92,19 @@ public class TransactionController {
         }
         
         return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    /**
+     * Resend OTP for a transaction
+     * POST /transactions/resend-otp
+     */
+    @PostMapping("/resend-otp")
+    // @RequireRole("user")
+    public ResponseEntity<ApiResponse<String>> resendOtp(
+            @Valid @RequestBody ResendOtpRequest request) {
+
+       String otp= transactionService.resendOtp(request.getTransactionId());
+        return ResponseEntity.ok(ApiResponse.success(otp));
     }
 
     /**

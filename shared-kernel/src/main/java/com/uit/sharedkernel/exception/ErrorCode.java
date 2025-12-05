@@ -13,7 +13,16 @@ public enum ErrorCode {
 
     /* User */
     USER_CREATION_FAILED(500, "User creation failed", HttpStatus.INTERNAL_SERVER_ERROR),
-    USER_ALREADY_EXISTS(409, "User already existed", HttpStatus.CONFLICT);
+    USER_ALREADY_EXISTS(409, "User already existed", HttpStatus.CONFLICT),
+
+    /* Transaction */
+    TRANSACTION_NOT_FOUND(404, "Transaction not found", HttpStatus.NOT_FOUND),
+    TRANSACTION_STATUS_CONFLICT(409, "Transaction is not in a valid state for this operation", HttpStatus.CONFLICT),
+
+    /* OTP */
+    OTP_NOT_FOUND(404, "OTP data not found or already used", HttpStatus.NOT_FOUND),
+    OTP_RESEND_COOLDOWN(429, "Resend OTP cooldown period has not passed", HttpStatus.TOO_MANY_REQUESTS);
+
 
     ErrorCode(int code, String message, HttpStatusCode statusCode) {
         this.code = code;

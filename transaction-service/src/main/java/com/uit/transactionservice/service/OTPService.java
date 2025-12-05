@@ -18,7 +18,7 @@ public class OTPService {
 
     private static final String OTP_KEY_PREFIX = "otp:transaction:";
     private static final String OTP_ATTEMPTS_KEY_PREFIX = "otp:transaction:attempts:";
-    private static final int OTP_EXPIRY_MINUTES = 10;
+    private static final int OTP_EXPIRY_SECONDS = 90;
     private static final int MAX_ATTEMPTS = 3;
 
     /**
@@ -39,12 +39,12 @@ public class OTPService {
 
         // Store OTP data
         OTPData otpData = new OTPData(otpCode, phoneNumber, System.currentTimeMillis());
-        redisTemplate.opsForValue().set(key, otpData, Duration.ofMinutes(OTP_EXPIRY_MINUTES));
+        redisTemplate.opsForValue().set(key, otpData, Duration.ofSeconds(OTP_EXPIRY_SECONDS));
         
         // Initialize attempts to 0
-        redisTemplate.opsForValue().set(attemptsKey, 0, Duration.ofMinutes(OTP_EXPIRY_MINUTES));
+        redisTemplate.opsForValue().set(attemptsKey, 0, Duration.ofSeconds(OTP_EXPIRY_SECONDS));
 
-        log.info("OTP saved for transaction: {} with {} minutes expiry", transactionId, OTP_EXPIRY_MINUTES);
+        log.info("OTP saved for transaction: {} with {} seconds expiry", transactionId, OTP_EXPIRY_SECONDS);
     }
 
     /**
@@ -102,6 +102,14 @@ public class OTPService {
     public boolean otpExists(UUID transactionId) {
         String key = OTP_KEY_PREFIX + transactionId;
         return Boolean.TRUE.equals(redisTemplate.hasKey(key));
+    }
+
+    /**
+     * Get OTP data from Redis
+     */
+    public OTPData getOtpData(UUID transactionId) {
+        String key = OTP_KEY_PREFIX + transactionId;
+        return (OTPData) redisTemplate.opsForValue().get(key);
     }
 
     // Inner classes for data structures

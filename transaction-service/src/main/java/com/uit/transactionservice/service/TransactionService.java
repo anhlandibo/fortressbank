@@ -98,6 +98,54 @@ public class TransactionService {
     }
 
     /**
+     * Resend OTP for an existing transaction
+     */
+    @Transactional
+    public String resendOtp(UUID transactionId) {
+        log.info("Resend OTP requested for transaction: {}", transactionId);
+        long RESEND_COOLDOWN_SECONDS = 3;// e.g., 3 seconds cooldown
+
+        // 1. Find transaction
+        Transaction transaction = transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
+
+        // 2. Check transaction status
+        if (transaction.getStatus() != TransactionStatus.PENDING_OTP) {
+            log.warn("Resend OTP failed: Transaction {} is not pending OTP verification. Status is {}",
+                    transactionId, transaction.getStatus());
+            throw new AppException(ErrorCode.TRANSACTION_STATUS_CONFLICT);
+        }
+
+        // 3. Check cooldown period to prevent spam
+        OTPService.OTPData existingOtpData = otpService.getOtpData(transactionId);
+        if (existingOtpData != null) {
+            long timeSinceLastOtp = (System.currentTimeMillis() - existingOtpData.getCreatedAt()) / 1000;
+            if (timeSinceLastOtp < RESEND_COOLDOWN_SECONDS) {
+                log.warn("Resend OTP failed: Cooldown period not met for transaction {}. Please wait {} seconds.",
+                        transactionId, RESEND_COOLDOWN_SECONDS - timeSinceLastOtp);
+                throw new AppException(ErrorCode.OTP_RESEND_COOLDOWN);
+            }
+        } else {
+            // This case should ideally not happen if status is PENDING_OTP, but handle it defensively
+            log.warn("Resend OTP failed: No existing OTP found in Redis for transaction {}", transactionId);
+            throw new AppException(ErrorCode.OTP_NOT_FOUND);
+        }
+
+
+        // 4. Generate, save, and send new OTP
+        String newOtpCode = otpService.generateOTP();
+        String phoneNumber = existingOtpData.getPhoneNumber();
+        log.info("Generated new OTP for transaction {}: {}", transactionId, newOtpCode);
+
+        otpService.saveOTP(transaction.getTransactionId(), newOtpCode, phoneNumber);
+        log.info("New OTP saved to Redis for transaction: {}", transaction.getTransactionId());
+
+        sendOTPNotification(transaction.getTransactionId(), phoneNumber, newOtpCode);
+        log.info("Resend OTP notification sent for transaction: {}", transactionId);
+        return newOtpCode;
+    }
+
+    /**
      * Get transaction history by account
      */
     public Page<TransactionResponse> getTransactionHistory(String accountId, Pageable pageable) {
@@ -279,16 +327,8 @@ public class TransactionService {
                 transaction = transactionRepository.save(transaction);
                 log.warn("Maximum OTP attempts reached for transaction: {}", transactionId);
             } else {
-        // --- LOGIC ĐÃ SỬA ---
-        
-        // 1. Chỉ log cảnh báo
-        log.warn("User entered invalid OTP for transaction: {}. {}", transactionId, result.getMessage());
 
-        // 2. KHÔNG setStatus(FAILED)
-        // 3. KHÔNG save transaction xuống DB
-        
-        // 4. Ném lỗi để Controller/GlobalHandler trả về 400 Bad Request
-        // Sử dụng ErrorCode có sẵn trong Shared Kernel
+        log.warn("User entered invalid OTP for transaction: {}. {}", transactionId, result.getMessage());
         throw new AppException(ErrorCode.INVALID_OTP);
     }
             

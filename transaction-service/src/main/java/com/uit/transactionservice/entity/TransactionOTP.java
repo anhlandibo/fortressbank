@@ -47,7 +47,7 @@ public class TransactionOTP {
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         if (expiresAt == null) {
-            expiresAt = createdAt.plusMinutes(5); // OTP valid for 5 minutes
+            expiresAt = createdAt.plusSeconds(90); // OTP valid for 90 seconds
         }
         verified = false;
         attemptCount = 0;
