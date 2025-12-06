@@ -2,23 +2,34 @@ server:
   port: 4000
   max-http-request-header-size: 64KB
 
-  # spring:
-  #   security:
-  #     oauth2:
-  #       resourceserver:
-  #         jwt:
-  #           issuer-uri: http://keycloak:8080/realms/fortressbank-realm
+spring:
+  # security:
+  #   oauth2:
+  #     resourceserver:
+  #       jwt:
+  #         issuer-uri: http://keycloak:8080/realms/fortressbank-realm
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL}
-    username: ${SPRING_DATASOURCE_USERNAME}
-    password: ${SPRING_DATASOURCE_PASSWORD}
-    driver-class-name: org.postgresql.Driver
+  url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://user-service-db:5432/userdb}
+  username: ${SPRING_DATASOURCE_USERNAME}
+  password: ${SPRING_DATASOURCE_PASSWORD}
+  driver-class-name: org.postgresql.Driver
 
   jpa:
     hibernate:
-      ddl-auto: update
-    show-sql: true
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
+    ddl-auto: validate
+  show-sql: never
+  properties:
+    hibernate:
+      dialect: org.hibernate.dialect.PostgreSQLDialect
+
+# Eureka Configuration
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: ${EUREKA_DEFAULT_ZONE:http://discovery:8761/eureka}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    preferIpAddress: true
+    instance-id: ${spring.application.name}:${random.value}

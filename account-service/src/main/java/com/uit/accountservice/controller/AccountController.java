@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 import jakarta.servlet.http.HttpServletRequest;
 
 import java.util.Map;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
@@ -200,18 +201,8 @@ public class AccountController {
         return ResponseEntity.ok(accounts);
     }
 
-    // Section of BoLac
-    private String getCurrentUserId() {
-        var authentication = SecurityContextHolder.getContext().getAuthentication();
-        return authentication.getName(); // Trả về 'sub' (userId)
-    }
+  
 
-    // GET /accounts
-    @GetMapping
-    public ResponseEntity<ApiResponse<List<AccountDto>>> getMyAccounts() {
-        List<AccountDto> accounts = accountService.getMyAccounts(getCurrentUserId());
-        return ResponseEntity.ok(ApiResponse.success(accounts));
-    }
 
     @GetMapping("/{accountId}")
     public ResponseEntity<ApiResponse<AccountDto>> getAccountDetail(@PathVariable("accountId") String accountId) {
@@ -240,13 +231,7 @@ public class AccountController {
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
-    // POST /accounts/{id}/pin
-    @PostMapping("/{id}/pin")
-    public ResponseEntity<ApiResponse<Void>> createPin(@PathVariable("id") String id, @Valid @RequestBody PinRequest request) {
-        accountService.createPin(id, getCurrentUserId(), request.newPin());
-        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(null));
-    }
-
+  
     // PUT /accounts/{id}/pin
     @PutMapping("/{id}/pin")
     public ResponseEntity<ApiResponse<Void>> updatePin(@PathVariable("id") String id, @Valid @RequestBody UpdatePinRequest request) {
