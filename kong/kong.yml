@@ -29,34 +29,6 @@ services:
           - /accounts
         strip_path: false
 
-  # public auth endpoints
-  - name: user-auth-service
-    url: http://user-service:4000
-    routes:
-      - name: user-auth-route
-        paths:
-          - /auth/
-        strip_path: false
-
-  # protected user endpoints
-  - name: user-main-service
-    url: http://user-service:4000
-    routes:
-      - name: user-main-route
-        paths:
-          - /users/
-          - /roles/
-        strip_path: false
-
-  # protected account
-  - name: account-service
-    url: http://account-service:4001
-    routes:
-      - name: account-service-route
-        paths:
-          - /accounts
-        strip_path: false
-
   # protected transaction service
   - name: transaction-service
     url: http://transaction-service:4004
@@ -66,7 +38,7 @@ services:
           - /transactions
         strip_path: false
 
-  # reference-service
+  # protected reference-service
   - name: reference-service
     url: http://reference-service:4003
     routes:
@@ -94,6 +66,17 @@ plugins:
   # # PROTECT account service
   # - name: openid-connect
   #   route: account-service-route
+  #   config:
+  #     client_id: "kong"
+  #     client_secret: "XLODsjH5G3f9iqGftbrkdHeNw3NVfNdZ"
+  #     discovery: "http://keycloak:8080/realms/fortressbank-realm/.well-known/openid-configuration"
+  #     session_secret: "random-secret-here"
+  #     scope: "openid profile email"
+  #     ssl_verify: false
+
+  # PROTECT account service
+  # - name: openid-connect
+  #   route: transaction-service-route
   #   config:
   #     client_id: "kong"
   #     client_secret: "XLODsjH5G3f9iqGftbrkdHeNw3NVfNdZ"
