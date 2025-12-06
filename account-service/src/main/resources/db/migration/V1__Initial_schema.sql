@@ -2,9 +2,12 @@
 
 CREATE TABLE accounts (
     account_id VARCHAR(255) PRIMARY KEY,
+    account_number VARCHAR(20) UNIQUE NOT NULL,
     user_id VARCHAR(255) NOT NULL,
     account_type VARCHAR(255) NOT NULL,
     balance DECIMAL(19, 2) NOT NULL,
+    pin_hash VARCHAR(255),
+    status VARCHAR(255) NOT NULL,
     created_at TIMESTAMP NOT NULL
 );
 

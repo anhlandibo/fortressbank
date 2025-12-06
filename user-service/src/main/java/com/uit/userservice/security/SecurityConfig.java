@@ -39,7 +39,7 @@ public class SecurityConfig {
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt ->
-                        // 3. Gắn bộ chuyển đổi Role vào đây
+                        // Gắn bộ chuyển đổi Role vào đây
                         jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())
                 ));
 

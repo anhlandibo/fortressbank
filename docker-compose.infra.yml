@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: 123456
       POSTGRES_DB: userdb
     ports:
-      - "5435:5432"
+      - "5433:5432"
     volumes:
       # This 'userdb_data' is defined in docker-compose.base.yml
       - userdb_data:/var/lib/postgresql/data
@@ -103,7 +103,7 @@ services:
       POSTGRES_PASSWORD: 123456
       POSTGRES_DB: transactiondb
     ports:
-      - "5433:5432"
+      - "5435:5432"
     volumes:
       # This 'transactiondb_data' is defined in docker-compose.base.yml
       - transactiondb_data:/var/lib/postgresql/data
@@ -130,8 +130,8 @@ services:
       KC_DB_URL_DATABASE: keycloak
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: password
-      KC_HOSTNAME: keycloak
-      KC_HOSTNAME_PORT: 8080
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: 8888
       KC_PROXY: edge
       KC_HOSTNAME_STRICT: "false"
       KC_HOSTNAME_STRICT_BACKCHANNEL: "false"

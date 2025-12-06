@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.math.BigDecimal;
+
 import java.security.SecureRandom;
 import java.util.List;
 import java.util.UUID;
@@ -348,24 +349,24 @@ public class AccountService {
      */
     @Transactional
     public com.uit.accountservice.dto.response.AccountBalanceResponse debitAccount(
-            String accountId,
+            String accountId, 
             com.uit.accountservice.dto.request.AccountBalanceRequest request) {
-
-        log.info("Debiting account {} - Amount: {} - Transaction: {}",
+        
+        log.info("Debiting account {} - Amount: {} - Transaction: {}", 
                 accountId, request.getAmount(), request.getTransactionId());
 
         // Find account WITH PESSIMISTIC LOCK to prevent concurrent modifications
         Account account = accountRepository.findByIdWithLock(accountId)
-                .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND,
+                .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND, 
                         "Account not found: " + accountId));
 
         BigDecimal oldBalance = account.getBalance();
 
         // Check sufficient balance (double-check after acquiring lock)
         if (account.getBalance().compareTo(request.getAmount()) < 0) {
-            log.warn("Insufficient balance for account {} - Required: {} - Available: {}",
+            log.warn("Insufficient balance for account {} - Required: {} - Available: {}", 
                     accountId, request.getAmount(), account.getBalance());
-            throw new AppException(ErrorCode.INSUFFICIENT_FUNDS,
+            throw new AppException(ErrorCode.INSUFFICIENT_FUNDS, 
                     "Insufficient balance in account: " + accountId);
         }
 
@@ -374,7 +375,7 @@ public class AccountService {
         account.setBalance(newBalance);
         accountRepository.save(account);
 
-        log.info("Debit successful - Account: {} - Old balance: {} - New balance: {} - TxID: {}",
+        log.info("Debit successful - Account: {} - Old balance: {} - New balance: {} - TxID: {}", 
                 accountId, oldBalance, newBalance, request.getTransactionId());
 
         return com.uit.accountservice.dto.response.AccountBalanceResponse.builder()
@@ -394,15 +395,15 @@ public class AccountService {
      */
     @Transactional
     public com.uit.accountservice.dto.response.AccountBalanceResponse creditAccount(
-            String accountId,
+            String accountId, 
             com.uit.accountservice.dto.request.AccountBalanceRequest request) {
-
-        log.info("Crediting account {} - Amount: {} - Transaction: {}",
+        
+        log.info("Crediting account {} - Amount: {} - Transaction: {}", 
                 accountId, request.getAmount(), request.getTransactionId());
 
         // Find account WITH PESSIMISTIC LOCK to prevent concurrent modifications
         Account account = accountRepository.findByIdWithLock(accountId)
-                .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND,
+                .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND, 
                         "Account not found: " + accountId));
 
         BigDecimal oldBalance = account.getBalance();
@@ -412,7 +413,7 @@ public class AccountService {
         account.setBalance(newBalance);
         accountRepository.save(account);
 
-        log.info("Credit successful - Account: {} - Old balance: {} - New balance: {} - TxID: {}",
+        log.info("Credit successful - Account: {} - Old balance: {} - New balance: {} - TxID: {}", 
                 accountId, oldBalance, newBalance, request.getTransactionId());
 
         return com.uit.accountservice.dto.response.AccountBalanceResponse.builder()
@@ -433,45 +434,45 @@ public class AccountService {
     @Transactional
     public com.uit.accountservice.dto.response.InternalTransferResponse executeInternalTransfer(
             com.uit.accountservice.dto.request.InternalTransferRequest request) {
-
-        log.info("Executing internal transfer - From: {} To: {} Amount: {} TxID: {}",
-                request.getSenderAccountId(), request.getReceiverAccountId(),
+        
+        log.info("Executing internal transfer - From: {} To: {} Amount: {} TxID: {}", 
+                request.getSenderAccountId(), request.getReceiverAccountId(), 
                 request.getAmount(), request.getTransactionId());
 
         // Lock BOTH accounts in deterministic order to prevent deadlock
         List<String> accountIds = List.of(request.getSenderAccountId(), request.getReceiverAccountId());
         List<Account> accounts = accountRepository.findByIdInWithLock(accountIds);
-
+        
         if (accounts.size() != 2) {
-            throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND,
+            throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND, 
                     "One or both accounts not found");
         }
-
+        
         // Identify sender and receiver
         Account fromAccount = accounts.stream()
                 .filter(a -> a.getAccountId().equals(request.getSenderAccountId()))
                 .findFirst()
-                .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND,
+                .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND, 
                         "Sender account not found"));
-
+        
         Account toAccount = accounts.stream()
                 .filter(a -> a.getAccountId().equals(request.getReceiverAccountId()))
                 .findFirst()
-                .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND,
+                .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND, 
                         "Receiver account not found"));
-
+        
         // Store old balances for response
         BigDecimal fromOldBalance = fromAccount.getBalance();
         BigDecimal toOldBalance = toAccount.getBalance();
-
+        
         // Check sufficient balance
         if (fromAccount.getBalance().compareTo(request.getAmount()) < 0) {
-            log.warn("Insufficient balance - Account: {} Required: {} Available: {}",
+            log.warn("Insufficient balance - Account: {} Required: {} Available: {}", 
                     request.getSenderAccountId(), request.getAmount(), fromAccount.getBalance());
-            throw new AppException(ErrorCode.INSUFFICIENT_FUNDS,
+            throw new AppException(ErrorCode.INSUFFICIENT_FUNDS, 
                     "Insufficient balance in sender account");
         }
-
+        
         // Execute transfer atomically
         fromAccount.setBalance(fromAccount.getBalance().subtract(request.getAmount()));
         toAccount.setBalance(toAccount.getBalance().add(request.getAmount()));

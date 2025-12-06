@@ -18,10 +18,10 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import jakarta.servlet.http.HttpServletRequest;
 
-import java.math.BigDecimal;
-import java.util.Optional;
 import java.util.Map;
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/accounts")
@@ -32,7 +32,7 @@ public class AccountController {
     private final AccountRepository accountRepository;
     private final AccountMapper accountMapper;
     private final TransferAuditService auditService;
-
+    
     //change this to check health for this endpoint
     @GetMapping("/")
     public Map<String, Object> healthCheck() {
@@ -59,24 +59,52 @@ public class AccountController {
      * Get a specific account by ID with ownership validation.
      * Users can only access accounts they own.
      */
+    /*
     @GetMapping("/{accountId}")
     @PreAuthorize("@accountService.isOwner(#accountId, authentication.name)")
     @RequireRole("user")
-    public ResponseEntity<?> getAccount(@PathVariable String accountId) {
-        if (accountId == null || accountId.trim().isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Account ID must be provided"));
-        }
-        
-        Optional<com.uit.accountservice.entity.Account> accountOptional = accountRepository.findById(accountId);
+    public ResponseEntity<AccountDto> getAccount(@PathVariable String accountId) {
+        return accountRepository.findById(accountId)
+                .map(accountMapper::toDto)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+    */
 
-        if (accountOptional.isPresent()) {
-            AccountDto accountDto = accountMapper.toDto(accountOptional.get());
-            return ResponseEntity.ok(accountDto);
-        } else {
-            return ResponseEntity.status(404).body(Map.of("success", false, "message", "Account not found"));
-        }
+    @GetMapping("/dashboard")
+    @RequireRole("admin")  // Like requireRole('admin') in Express
+    public Map<String, Object> getDashboard(HttpServletRequest request) {
+        return Map.of(
+            "message", "Admin Dashboard",
+            "stats", Map.of("totalUsers", 42, "totalAccounts", 100)
+        );
     }
 
+    @PostMapping("/transfers")
+    @PreAuthorize("@accountService.isOwner(#transferRequest.fromAccountId, authentication.name)")
+    @RequireRole("user")
+    public ResponseEntity<?> handleTransfer(@RequestBody TransferRequest transferRequest, HttpServletRequest request) {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> userInfo = (Map<String, Object>) request.getAttribute("userInfo");
+        String userId = (String) userInfo.get("sub");
+
+        // Extract fraud detection metadata from headers
+        String deviceFingerprint = request.getHeader("X-Device-Fingerprint");
+        String ipAddress = request.getHeader("X-Forwarded-For");
+        if (ipAddress == null) {
+            ipAddress = request.getRemoteAddr();
+        }
+        String location = request.getHeader("X-Location"); // Expected format: "City, Country" or "Country"
+
+        return ResponseEntity.ok(accountService.handleTransfer(
+                transferRequest, userId, deviceFingerprint, ipAddress, location));
+    }
+
+    @PostMapping("/verify-transfer")
+    @RequireRole("user")
+    public ResponseEntity<AccountDto> verifyTransfer(@RequestBody VerifyTransferRequest verifyTransferRequest) {
+        return ResponseEntity.ok(accountService.verifyTransfer(verifyTransferRequest));
+    }
 
     /**
      * Get audit logs for the current user's transfers.
@@ -113,7 +141,7 @@ public class AccountController {
             @PathVariable String accountId,
             @RequestBody com.uit.accountservice.dto.request.AccountBalanceRequest request) {
         try {
-            com.uit.accountservice.dto.response.AccountBalanceResponse response =
+            com.uit.accountservice.dto.response.AccountBalanceResponse response = 
                 accountService.debitAccount(accountId, request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -128,31 +156,30 @@ public class AccountController {
     /**
      * Credit (add) amount to an account.
      */
-    @PostMapping("/{accountId}/credit")
-    public ResponseEntity<?> creditAccount(
-            @PathVariable String accountId,
-            @RequestBody com.uit.accountservice.dto.request.AccountBalanceRequest request) {
-        try {
-            com.uit.accountservice.dto.response.AccountBalanceResponse response =
-                accountService.creditAccount(accountId, request);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of(
-                "success", false,
-                "message", e.getMessage(),
-                "transactionId", request.getTransactionId()
-            ));
-        }
+
+
+    // Section of BoLac
+    private String getCurrentUserId() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication.getName(); // Trả về 'sub' (userId)
+    }
+
+    // GET /accounts
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<AccountDto>>> getMyAccounts() {
+        List<AccountDto> accounts = accountService.getMyAccounts(getCurrentUserId());
+        return ResponseEntity.ok(ApiResponse.success(accounts));
     }
 
     /**
-     * Execute internal transfer atomically (debit + credit in single transaction).
+     * Get velocity check for a user (admin only).
+     * Returns count of recent transfers for fraud detection.
      */
     @PostMapping("/internal-transfer")
     public ResponseEntity<?> executeInternalTransfer(
             @RequestBody com.uit.accountservice.dto.request.InternalTransferRequest request) {
         try {
-            com.uit.accountservice.dto.response.InternalTransferResponse response =
+            com.uit.accountservice.dto.response.InternalTransferResponse response = 
                 accountService.executeInternalTransfer(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -174,18 +201,8 @@ public class AccountController {
         return ResponseEntity.ok(accounts);
     }
 
-    // Section of BoLac
-    private String getCurrentUserId() {
-        var authentication = SecurityContextHolder.getContext().getAuthentication();
-        return authentication.getName(); // Trả về 'sub' (userId)
-    }
 
-    // GET /accounts
-    @GetMapping
-    public ResponseEntity<ApiResponse<List<AccountDto>>> getMyAccounts() {
-        List<AccountDto> accounts = accountService.getMyAccounts(getCurrentUserId());
-        return ResponseEntity.ok(ApiResponse.success(accounts));
-    }
+
 
     @GetMapping("/{accountId}")
     public ResponseEntity<ApiResponse<AccountDto>> getAccountDetail(@PathVariable("accountId") String accountId) {
@@ -201,6 +218,7 @@ public class AccountController {
     }
 
     // POST /accounts
+    @PostMapping()
     public ResponseEntity<ApiResponse<AccountDto>> createAccount(@Valid @RequestBody CreateAccountRequest request) {
         AccountDto newAccount = accountService.createAccount(getCurrentUserId(), request);
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -214,12 +232,6 @@ public class AccountController {
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
-    // POST /accounts/{id}/pin
-    @PostMapping("/{id}/pin")
-    public ResponseEntity<ApiResponse<Void>> createPin(@PathVariable("id") String id, @Valid @RequestBody PinRequest request) {
-        accountService.createPin(id, getCurrentUserId(), request.newPin());
-        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(null));
-    }
 
     // PUT /accounts/{id}/pin
     @PutMapping("/{id}/pin")
