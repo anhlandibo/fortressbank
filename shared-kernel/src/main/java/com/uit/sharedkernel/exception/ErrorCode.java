@@ -14,6 +14,7 @@ public enum ErrorCode {
     /* User */
     USER_CREATION_FAILED(500, "User creation failed", HttpStatus.INTERNAL_SERVER_ERROR),
     USER_ALREADY_EXISTS(409, "User already existed", HttpStatus.CONFLICT),
+    USER_NOT_FOUND(404, "User not found", HttpStatus.NOT_FOUND),
 
     /* Transaction */
     TRANSACTION_NOT_FOUND(404, "Transaction not found", HttpStatus.NOT_FOUND),
@@ -21,9 +22,10 @@ public enum ErrorCode {
 
     /* OTP */
     OTP_NOT_FOUND(404, "OTP data not found or already used", HttpStatus.NOT_FOUND),
-    OTP_RESEND_COOLDOWN(429, "Resend OTP cooldown period has not passed", HttpStatus.TOO_MANY_REQUESTS);
+    OTP_RESEND_COOLDOWN(429, "Resend OTP cooldown period has not passed", HttpStatus.TOO_MANY_REQUESTS),
 
-
+    BAD_REQUEST(400, "Bad request", HttpStatus.BAD_REQUEST),
+    INVALID_CREDENTIALS(400, "Invalid credentials", HttpStatus.BAD_REQUEST);
     ErrorCode(int code, String message, HttpStatusCode statusCode) {
         this.code = code;
         this.message = message;

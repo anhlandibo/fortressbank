@@ -15,7 +15,7 @@ import java.util.Optional;
 public interface AccountRepository extends JpaRepository<Account, String> {
 
     List<Account> findByUserId(String userId);
-    
+
     /**
      * Find account with pessimistic write lock to prevent concurrent modifications.
      * This ensures only one transaction can modify the account at a time.
@@ -24,7 +24,7 @@ public interface AccountRepository extends JpaRepository<Account, String> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT a FROM Account a WHERE a.accountId = :accountId")
     Optional<Account> findByIdWithLock(@Param("accountId") String accountId);
-    
+
     /**
      * Find multiple accounts with pessimistic write lock.
      * Used for atomic internal transfers to lock both sender and receiver.
@@ -33,4 +33,8 @@ public interface AccountRepository extends JpaRepository<Account, String> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT a FROM Account a WHERE a.accountId IN :accountIds ORDER BY a.accountId")
     List<Account> findByIdInWithLock(@Param("accountIds") List<String> accountIds);
+
+    Optional<Account> findByAccountNumber(String accountNumber);
+
+    boolean existsByAccountNumber(String accountNumber);
 }

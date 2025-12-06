@@ -4,13 +4,12 @@ import com.uit.accountservice.dto.AccountDto;
 import com.uit.accountservice.dto.request.TransferRequest;
 import com.uit.accountservice.dto.request.VerifyTransferRequest;
 import com.uit.accountservice.dto.response.ChallengeResponse;
-import com.uit.accountservice.entity.TransferStatus;
+import com.uit.accountservice.entity.enums.TransferStatus;
 import com.uit.accountservice.service.AccountService;
 import com.uit.accountservice.service.TransferAuditService;
 import jakarta.xml.bind.JAXBElement;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-
 import org.springframework.ws.context.MessageContext;
 import org.springframework.ws.server.endpoint.annotation.Endpoint;
 import org.springframework.ws.server.endpoint.annotation.PayloadRoot;
@@ -81,8 +80,8 @@ public class TransferEndpoint {
 
         TransferRequestType transferRequest = request.getValue();
         log.info("SOAP Transfer request: {} → {} amount {}", 
-                transferRequest.getSenderAccountId(), 
-                transferRequest.getReceiverAccountId(), 
+                transferRequest.getSenderAccountId(),
+                transferRequest.getReceiverAccountId(),
                 transferRequest.getAmount());
 
         try {

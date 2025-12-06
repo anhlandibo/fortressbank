@@ -1,5 +1,6 @@
 package com.uit.accountservice.controller;
 
+import com.uit.accountservice.dto.request.*;
 import com.uit.accountservice.entity.TransferAuditLog;
 import com.uit.accountservice.mapper.AccountMapper;
 import com.uit.accountservice.repository.AccountRepository;
@@ -7,15 +8,20 @@ import com.uit.accountservice.security.RequireRole;
 import com.uit.accountservice.service.AccountService;
 import com.uit.accountservice.service.TransferAuditService;
 import com.uit.accountservice.dto.AccountDto;
+import com.uit.sharedkernel.api.ApiResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import jakarta.servlet.http.HttpServletRequest;
 
+import java.math.BigDecimal;
+import java.util.Optional;
 import java.util.Map;
 import java.util.List;
-import java.util.Optional;
 
 @RestController
 @RequestMapping("/accounts")
@@ -26,7 +32,7 @@ public class AccountController {
     private final AccountRepository accountRepository;
     private final AccountMapper accountMapper;
     private final TransferAuditService auditService;
-    
+
     //change this to check health for this endpoint
     @GetMapping("/")
     public Map<String, Object> healthCheck() {
@@ -107,7 +113,7 @@ public class AccountController {
             @PathVariable String accountId,
             @RequestBody com.uit.accountservice.dto.request.AccountBalanceRequest request) {
         try {
-            com.uit.accountservice.dto.response.AccountBalanceResponse response = 
+            com.uit.accountservice.dto.response.AccountBalanceResponse response =
                 accountService.debitAccount(accountId, request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -127,7 +133,7 @@ public class AccountController {
             @PathVariable String accountId,
             @RequestBody com.uit.accountservice.dto.request.AccountBalanceRequest request) {
         try {
-            com.uit.accountservice.dto.response.AccountBalanceResponse response = 
+            com.uit.accountservice.dto.response.AccountBalanceResponse response =
                 accountService.creditAccount(accountId, request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -146,7 +152,7 @@ public class AccountController {
     public ResponseEntity<?> executeInternalTransfer(
             @RequestBody com.uit.accountservice.dto.request.InternalTransferRequest request) {
         try {
-            com.uit.accountservice.dto.response.InternalTransferResponse response = 
+            com.uit.accountservice.dto.response.InternalTransferResponse response =
                 accountService.executeInternalTransfer(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -166,5 +172,59 @@ public class AccountController {
     public ResponseEntity<List<AccountDto>> getAllAccounts() {
         List<AccountDto> accounts = accountService.getAllAccounts();
         return ResponseEntity.ok(accounts);
+    }
+
+    // Section of BoLac
+    private String getCurrentUserId() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication.getName(); // Trả về 'sub' (userId)
+    }
+
+    // GET /accounts
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<AccountDto>>> getMyAccounts() {
+        List<AccountDto> accounts = accountService.getMyAccounts(getCurrentUserId());
+        return ResponseEntity.ok(ApiResponse.success(accounts));
+    }
+
+    @GetMapping("/{accountId}")
+    public ResponseEntity<ApiResponse<AccountDto>> getAccountDetail(@PathVariable("accountId") String accountId) {
+        AccountDto account = accountService.getAccountDetail(accountId, getCurrentUserId());
+        return ResponseEntity.ok(ApiResponse.success(account));
+    }
+
+    // GET /accounts/{accountId}/balance
+    @GetMapping("/balance/{accountId}")
+    public ResponseEntity<ApiResponse<Map<String, BigDecimal>>> getBalance(@PathVariable("accountId") String accountId) {
+        BigDecimal balance = accountService.getBalance(accountId, getCurrentUserId());
+        return ResponseEntity.ok(ApiResponse.success(Map.of("balance", balance)));
+    }
+
+    // POST /accounts
+    public ResponseEntity<ApiResponse<AccountDto>> createAccount(@Valid @RequestBody CreateAccountRequest request) {
+        AccountDto newAccount = accountService.createAccount(getCurrentUserId(), request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(newAccount));
+    }
+
+    // DELETE /accounts/{id}
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> closeAccount(@PathVariable("id") String id) {
+        accountService.closeAccount(id, getCurrentUserId());
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    // POST /accounts/{id}/pin
+    @PostMapping("/{id}/pin")
+    public ResponseEntity<ApiResponse<Void>> createPin(@PathVariable("id") String id, @Valid @RequestBody PinRequest request) {
+        accountService.createPin(id, getCurrentUserId(), request.newPin());
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(null));
+    }
+
+    // PUT /accounts/{id}/pin
+    @PutMapping("/{id}/pin")
+    public ResponseEntity<ApiResponse<Void>> updatePin(@PathVariable("id") String id, @Valid @RequestBody UpdatePinRequest request) {
+        accountService.updatePin(id, getCurrentUserId(), request.oldPin(), request.newPin());
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 }

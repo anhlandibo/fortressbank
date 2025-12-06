@@ -52,6 +52,7 @@ services:
       SPRING_PROFILES_ACTIVE: docker
       SERVER_PORT: 4000
       SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+      JWT_ISSUER_URI: http://keycloak:8080/realms/fortressbank-realm
     depends_on:
       discovery:
         condition: service_healthy

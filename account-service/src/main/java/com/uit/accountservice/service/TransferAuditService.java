@@ -1,7 +1,7 @@
 package com.uit.accountservice.service;
 
 import com.uit.accountservice.entity.TransferAuditLog;
-import com.uit.accountservice.entity.TransferStatus;
+import com.uit.accountservice.entity.enums.TransferStatus;
 import com.uit.accountservice.repository.TransferAuditLogRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
