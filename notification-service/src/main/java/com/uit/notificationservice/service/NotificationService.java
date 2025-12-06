@@ -7,10 +7,12 @@ import com.uit.notificationservice.entity.NotificationMessage;
 import com.uit.notificationservice.repository.NotificationRepo;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -24,10 +26,10 @@ public class NotificationService {
     private final NotificationRepo notificationRepo;
     private final FirebaseMessagingService firebaseMessagingService;
 
-    @Value("${textbee.api.key}" )
+    @Value("${textbee.api.key}")
     private String apiKey;
 
-    @Value("${textbee.device.id}" )
+    @Value("${textbee.device.id}")
     private String deviceId;
 
     public void sendSmsOtp(String phoneNumber, String otpCode) {
@@ -52,6 +54,7 @@ public class NotificationService {
         return notificationRepo.findAll();
     }
 
+
     public NotificationMessage createAndSendNotification(SendNotificationRequest request) throws FirebaseMessagingException {
         NotificationMessage newNotification = NotificationMessage.builder()
                 .userId(request.getUserId())
@@ -65,15 +68,42 @@ public class NotificationService {
                 .createdAt(new Date())
                 .build();
 
+//        NotificationMessage newNotification = NotificationMessage.builder()
+//                .userId("userId_123321")
+//                .title("Fortress Bank Notification")
+//                .content("Money transferred: " + "+" + 30000 + "\n" +
+//                        "Remaining Balance: " + 530000)
+//                .image(null)
+//                .type("transaction")
+//                .deviceToken(request.getDeviceToken())
+//                .isRead(false)
+//                .sentAt(new Date())
+//                .createdAt(new Date())
+//                .build();
+
+//        SendNotificationRequest newNotification = new SendNotificationRequest(
+//                "userId_123321",
+//                "Fortress Bank Notification",
+//                "Money transferred: " + "+" + 30000 + "\n" +
+//                        "Remaining Balance: " + 530000,
+//                null,
+//                "TRANSACTION",
+//                false,
+//                new Date()
+//        );
+
+        List<String> tokens = new ArrayList<>();
+        tokens.add(request.getDeviceToken());
+
         notificationRepo.save(newNotification);
-        CompletableFuture.runAsync(() -> {
-            try {
-                firebaseMessagingService.sendNotification(newNotification);
-            } catch (FirebaseMessagingException e) {
-                e.printStackTrace();
-                // Optionally update notification status sent=false
-            }
-        });
+        firebaseMessagingService.sendNotification(tokens, request);
+//        CompletableFuture.runAsync(() -> {
+//            try {
+//            } catch (FirebaseMessagingException e) {
+//                e.printStackTrace();
+//                // Optionally update notification status sent=false
+//            }
+//        });
 
 //        firebaseMessagingService.sendNotification(newNotification);
 

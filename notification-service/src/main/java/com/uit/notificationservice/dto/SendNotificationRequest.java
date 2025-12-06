@@ -12,7 +12,6 @@ import java.util.Date;
 @NoArgsConstructor
 @AllArgsConstructor
 public class SendNotificationRequest {
-    private String notificationId;
     private String userId;
     private String title;
     private String content;
@@ -21,4 +20,14 @@ public class SendNotificationRequest {
     private boolean isRead;
     private Date sentAt;
     private String deviceToken;
+
+    public SendNotificationRequest(String userId, String title, String content, String image, String type, boolean isRead, Date sentAt) {
+        this.userId = userId;
+        this.title = title;
+        this.content = content;
+        this.image = image;
+        this.type = type;
+        this.isRead = isRead;
+        this.sentAt = sentAt;
+    }
 }

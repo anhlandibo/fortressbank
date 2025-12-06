@@ -1,6 +1,7 @@
 package com.uit.accountservice.service;
 
 import com.uit.accountservice.dto.AccountDto;
+import com.uit.accountservice.dto.BalanceChangeMessage;
 import com.uit.accountservice.dto.PendingTransfer;
 import com.uit.accountservice.dto.request.SendSmsOtpRequest;
 import com.uit.accountservice.dto.request.TransferRequest;
@@ -42,6 +43,7 @@ public class AccountService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final WebClient.Builder webClientBuilder;
     private final TransferAuditService auditService;
+    private final RabbitMQPublisher rabbitMQPublisher;
 
     public List<AccountDto> getAccountsByUserId(String userId) {
         return accountRepository.findByUserId(userId)
@@ -304,6 +306,10 @@ public class AccountService {
                     location,
                     "Transfer executed successfully"
             );
+
+            // TODO: config the rabbitmq publisher in order to send handling notification message
+            rabbitMQPublisher.publish(new BalanceChangeMessage(fromAccount.getUserId(), fromAccount.getBalance(), transferRequest.getAmount(), "DECREASE"));
+            rabbitMQPublisher.publish(new BalanceChangeMessage(toAccount.getUserId(), toAccount.getBalance(), transferRequest.getAmount(), "INCREASE"));
 
             return accountMapper.toDto(fromAccount);
         } catch (Exception e) {

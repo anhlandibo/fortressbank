@@ -2,6 +2,12 @@ package com.uit.sharedkernel.constants;
 
 public class RabbitMQConstants {
     // Notification
-    public static final String NOTIFICATION_EXCHANGE_NAME = "notifications.exchange";
-    public static final String MONEY_TRANSFERRED = "money.transferred";
+    // Exchange
+    public static final String NOTIFICATION_EXCHANGE = "notifications.exchange";
+
+    // Queue
+    public static final String NOTIFICATION_TRANSFER_QUEUE = "notification.transfer.queue";
+
+    // Key
+    public static final String NOTIF_TRANSFER_CREATED_KEY = "transfer.created";
 }

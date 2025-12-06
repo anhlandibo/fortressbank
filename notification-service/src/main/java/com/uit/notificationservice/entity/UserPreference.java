@@ -3,6 +3,8 @@ package com.uit.notificationservice.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.util.List;
+
 @Entity
 @Getter
 @Setter
@@ -13,7 +15,11 @@ public class UserPreference {
     @Column(columnDefinition = "CHAR(36)", name = "user_id")
     private String userId;
 
-//    @C
+    @Column(nullable = false, name = "device_token")
+    private List<String> deviceTokens;
+
+    @Column(nullable = false, name = "push_enabled")
+    private boolean pushEnabled;
 
     @Column(nullable = false, name = "email_enabled")
     private boolean emailEnabled;

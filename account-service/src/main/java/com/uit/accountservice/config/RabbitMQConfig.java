@@ -1,4 +1,4 @@
-package com.uit.notificationservice.config;
+package com.uit.accountservice.config;
 
 import com.uit.sharedkernel.constants.RabbitMQConstants;
 import org.springframework.amqp.core.Binding;
@@ -11,9 +11,9 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class RabbitMQConfig {
 
-    private static final String QUEUE = RabbitMQConstants.NOTIFICATION_TRANSFER_QUEUE;
-    private static final String EXCHANGE = RabbitMQConstants.NOTIFICATION_EXCHANGE;
-    private static final String BALANCE_FLUCTUATION = RabbitMQConstants.NOTIF_TRANSFER_CREATED_KEY;
+    public static final String QUEUE = RabbitMQConstants.NOTIFICATION_TRANSFER_QUEUE;
+    public static final String EXCHANGE = RabbitMQConstants.NOTIFICATION_EXCHANGE;
+    public static final String NOTIF_TRANSFER_CREATED_KEY = RabbitMQConstants.NOTIF_TRANSFER_CREATED_KEY;
 
     @Bean
     public TopicExchange topicExchange() {
@@ -27,6 +27,6 @@ public class RabbitMQConfig {
 
     @Bean
     public Binding bindingBalanceFluctuation() {
-        return BindingBuilder.bind(queue()).to(topicExchange()).with(BALANCE_FLUCTUATION);
+        return BindingBuilder.bind(queue()).to(topicExchange()).with(NOTIF_TRANSFER_CREATED_KEY);
     }
 }

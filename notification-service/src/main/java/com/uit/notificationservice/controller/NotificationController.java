@@ -14,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 @RestController
@@ -51,7 +52,20 @@ public class NotificationController {
 
     @PostMapping("/")
     public ResponseEntity<ApiResponse<SendNotificationResponse>> sendNotification(@RequestBody SendNotificationRequest request) throws FirebaseMessagingException {
+//        SendNotificationRequest mockRequest = new SendNotificationRequest(
+//                "userId",
+//                "Fortress Bank Notification",
+//                "Money transferred: " + "-" + 500000 + "\n" +
+//                        "Remaining Balance: " + 3000000,
+//                null,
+//                "TRANSACTION",
+//                false,
+//                new Date(),
+//                "eDR-JhTcSdedDcsVF4kieg:APA91bGccMdfvZXiSS1qMyiVUsvY8h6OUbeCLZ5o5DBD16PEXb5CO1IaQtLqMEUl0b93fZHD_NbbwO_nJX9F-BMsVlCSQm7I3D9bmOeCuG3O2PQxmgwvtcI"
+//        );
+
         NotificationMessage notification = notificationService.createAndSendNotification(request);
+//        NotificationMessage notification = notificationService.createAndSendNotification(mockRequest);
 
         SendNotificationResponse responseResult = mapper.toResponseDto(notification);
         return ResponseEntity.ok(ApiResponse.success(responseResult));
