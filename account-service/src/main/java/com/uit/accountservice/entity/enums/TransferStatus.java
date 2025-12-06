@@ -1,4 +1,4 @@
-package com.uit.accountservice.entity;
+package com.uit.accountservice.entity.enums;
 
 public enum TransferStatus {
     PENDING,           // Awaiting OTP verification

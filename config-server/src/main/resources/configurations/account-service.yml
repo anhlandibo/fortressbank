@@ -14,8 +14,8 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
     password: ${SPRING_DATASOURCE_PASSWORD:123456}
     driver-class-name: org.postgresql.Driver
-jwt:
-  issuer-uri: http://keycloak:8080/realms/fortressbank-realm
+  jwt:
+    issuer-uri: http://keycloak:8080/realms/fortressbank-realm
 
   data:
     redis:

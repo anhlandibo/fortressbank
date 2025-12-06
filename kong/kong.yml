@@ -7,7 +7,7 @@ services:
     routes:
       - name: user-auth-route
         paths:
-          - /auth/
+          - /auth
         strip_path: false
 
   # protected user endpoints
@@ -16,8 +16,8 @@ services:
     routes:
       - name: user-main-route
         paths:
-          - /users/
-          - /roles/
+          - /users
+          - /roles
         strip_path: false
 
   # protected account
@@ -27,6 +27,8 @@ services:
       - name: account-service-route
         paths:
           - /accounts
+          - /beneficiaries
+          - /cards
         strip_path: false
 
   # protected transaction service

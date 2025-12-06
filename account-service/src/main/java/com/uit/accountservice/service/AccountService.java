@@ -2,12 +2,14 @@ package com.uit.accountservice.service;
 
 import com.uit.accountservice.dto.AccountDto;
 import com.uit.accountservice.dto.PendingTransfer;
+import com.uit.accountservice.dto.request.CreateAccountRequest;
 import com.uit.accountservice.dto.request.SendSmsOtpRequest;
 import com.uit.accountservice.dto.request.TransferRequest;
 import com.uit.accountservice.dto.request.VerifyTransferRequest;
 import com.uit.accountservice.dto.response.ChallengeResponse;
 import com.uit.accountservice.entity.Account;
-import com.uit.accountservice.entity.TransferStatus;
+import com.uit.accountservice.entity.enums.AccountStatus;
+import com.uit.accountservice.entity.enums.TransferStatus;
 import com.uit.accountservice.mapper.AccountMapper;
 import com.uit.accountservice.repository.AccountRepository;
 import com.uit.accountservice.riskengine.RiskEngineService;
@@ -19,11 +21,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.math.BigDecimal;
+
+import java.security.SecureRandom;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -43,6 +48,7 @@ public class AccountService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final WebClient.Builder webClientBuilder;
     private final TransferAuditService auditService;
+    private final PasswordEncoder passwordEncoder;
 
     public List<AccountDto> getAccountsByUserId(String userId) {
         return accountRepository.findByUserId(userId)
@@ -492,5 +498,126 @@ public class AccountService {
                 .success(true)
                 .message("Internal transfer completed successfully")
                 .build();
+    }
+
+    // SECTION BOLAC <3
+    public List<AccountDto> getMyAccounts(String userId) {
+        // Chỉ lấy các tài khoản chưa bị đóng
+        return accountRepository.findByUserId(userId).stream()
+                .filter(a -> a.getStatus() != AccountStatus.CLOSED)
+                .map(accountMapper::toDto)
+                .collect(Collectors.toList());
+    }
+
+    public AccountDto getAccountDetail(String accountId, String userId) {
+        Account account = getAccountOwnedByUser(accountId, userId);
+        return accountMapper.toDto(account);
+    }
+
+    public BigDecimal getBalance(String accountId, String userId) {
+        Account account = getAccountOwnedByUser(accountId, userId);
+        return account.getBalance();
+    }
+
+    @Transactional
+    public AccountDto createAccount(String userId, CreateAccountRequest request) {
+        if (!isValidAccountType(request.accountType())) {
+            throw new AppException(ErrorCode.BAD_REQUEST, "Invalid account type");
+        }
+        // Logic sinh số tài khoản ngẫu nhiên 10 số
+        String accountNumber = generateUniqueAccountNumber();
+
+        Account account = Account.builder()
+                .userId(userId)
+                .accountNumber(accountNumber)
+                .accountType(request.accountType())
+                .balance(BigDecimal.ZERO)
+                .status(AccountStatus.ACTIVE)
+                .build();
+
+        return accountMapper.toDto(accountRepository.save(account));
+    }
+
+    @Transactional
+    public void closeAccount(String accountId, String userId) {
+        Account account = getAccountOwnedByUser(accountId, userId);
+
+        if (account.getStatus() == AccountStatus.CLOSED) {
+            throw new AppException(ErrorCode.ACCOUNT_STATUS_CONFLICT, "Account is already closed");
+        }
+
+        if (account.getBalance().compareTo(BigDecimal.ZERO) > 0) {
+            throw new AppException(ErrorCode.ACCOUNT_CLOSE_NONZERO_BALANCE);
+        }
+
+        account.setStatus(AccountStatus.CLOSED);
+        accountRepository.save(account);
+    }
+
+    @Transactional
+    public void createPin(String accountId, String userId, String newPin) {
+        validatePinFormat(newPin);
+        Account account = getAccountOwnedByUser(accountId, userId);
+        if (account.getPinHash() != null) {
+            throw new AppException(ErrorCode.BAD_REQUEST, "PIN already exists. Use PUT to update.");
+        }
+        account.setPinHash(passwordEncoder.encode(newPin));
+        accountRepository.save(account);
+    }
+
+    @Transactional
+    public void updatePin(String accountId, String userId, String oldPin, String newPin) {
+        validatePinFormat(newPin);
+        Account account = getAccountOwnedByUser(accountId, userId);
+
+        if (account.getPinHash() == null) {
+            throw new AppException(ErrorCode.BAD_REQUEST, "PIN not set. Use POST to create.");
+        }
+
+        if (!passwordEncoder.matches(oldPin, account.getPinHash())) {
+            throw new AppException(ErrorCode.INVALID_CREDENTIALS, "Old PIN is incorrect");
+        }
+
+        account.setPinHash(passwordEncoder.encode(newPin));
+        accountRepository.save(account);
+    }
+
+    // Helpers
+    private Account getAccountOwnedByUser(String accountId, String userId) {
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND));
+
+        if (!account.getUserId().equals(userId)) {
+            throw new AppException(ErrorCode.FORBIDDEN, "Access denied");
+        }
+        return account;
+    }
+
+    private String generateUniqueAccountNumber() {
+        SecureRandom random = new SecureRandom();
+        StringBuilder sb = new StringBuilder();
+        // Số đầu tiên từ 1-9 để tránh số 0 ở đầu
+        sb.append(random.nextInt(9) + 1);
+        for (int i = 0; i < 9; i++) {
+            sb.append(random.nextInt(10));
+        }
+
+        String accNum = sb.toString();
+
+        // Đệ quy check trùng (tuy xác suất thấp nhưng cần thiết cho banking)
+        if (accountRepository.existsByAccountNumber(accNum)) {
+            return generateUniqueAccountNumber();
+        }
+        return accNum;
+    }
+
+    private boolean isValidAccountType(String type) {
+        return type != null && (type.equalsIgnoreCase("SPEND") || type.equalsIgnoreCase("SAVING"));
+    }
+
+    private void validatePinFormat(String pin) {
+        if (pin == null || !pin.matches("\\d{6}")) {
+            throw new AppException(ErrorCode.BAD_REQUEST, "PIN must be exactly 6 digits");
+        }
     }
 }

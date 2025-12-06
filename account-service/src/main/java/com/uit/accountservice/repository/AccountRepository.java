@@ -11,6 +11,7 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Optional;
 
+
 @Repository
 public interface AccountRepository extends JpaRepository<Account, String> {
 
@@ -33,4 +34,8 @@ public interface AccountRepository extends JpaRepository<Account, String> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT a FROM Account a WHERE a.accountId IN :accountIds ORDER BY a.accountId")
     List<Account> findByIdInWithLock(@Param("accountIds") List<String> accountIds);
+
+    Optional<Account> findByAccountNumber(String accountNumber);
+
+    boolean existsByAccountNumber(String accountNumber);
 }

@@ -4,7 +4,7 @@ import com.uit.accountservice.dto.AccountDto;
 import com.uit.accountservice.dto.request.TransferRequest;
 import com.uit.accountservice.dto.request.VerifyTransferRequest;
 import com.uit.accountservice.dto.response.ChallengeResponse;
-import com.uit.accountservice.entity.TransferStatus;
+import com.uit.accountservice.entity.enums.TransferStatus;
 import com.uit.accountservice.service.AccountService;
 import com.uit.accountservice.service.TransferAuditService;
 import jakarta.xml.bind.JAXBElement;
