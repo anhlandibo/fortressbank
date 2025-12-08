@@ -23,27 +23,27 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public UserResponse register(RegisterRequest request) {
 
-        if (userRepository.findByUsername(request.username()).isPresent()) {
+        if (userRepository.findByUsername(request.getUsername()).isPresent()) {
             throw new AppException(ErrorCode.USERNAME_EXISTS);
         }
-        if (userRepository.findByEmail(request.email()).isPresent()) {
+        if (userRepository.findByEmail(request.getEmail()).isPresent()) {
             throw new AppException(ErrorCode.EMAIL_EXISTS);
         }
 
         // 1. tạo user trong Keycloak
         String keycloakUserId = keycloakClient.createUser(
-                request.username(),
-                request.email(),
-                request.fullName(),
-                request.password()
+                request.getUsername(),
+                request.getEmail(),
+                request.getFullName(),
+                request.getPassword()
         );
 
         // 2. tạo bản ghi profile trong DB local
         User user = new User();
         user.setId(keycloakUserId);
-        user.setUsername(request.username());
-        user.setEmail(request.email());
-        user.setFullName(request.fullName());
+        user.setUsername(request.getUsername());
+        user.setEmail(request.getEmail());
+        user.setFullName(request.getFullName());
 
         userRepository.save(user);
 

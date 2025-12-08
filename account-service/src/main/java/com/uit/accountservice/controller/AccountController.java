@@ -158,18 +158,7 @@ public class AccountController {
      */
 
 
-    // Section of BoLac
-    private String getCurrentUserId() {
-        var authentication = SecurityContextHolder.getContext().getAuthentication();
-        return authentication.getName(); // Trả về 'sub' (userId)
-    }
 
-    // GET /accounts
-    @GetMapping
-    public ResponseEntity<ApiResponse<List<AccountDto>>> getMyAccounts() {
-        List<AccountDto> accounts = accountService.getMyAccounts(getCurrentUserId());
-        return ResponseEntity.ok(ApiResponse.success(accounts));
-    }
 
     /**
      * Get velocity check for a user (admin only).
@@ -203,14 +192,26 @@ public class AccountController {
 
 
 
+    // Section of BoLac
+    private String getCurrentUserId() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication.getName(); // Trả về 'sub' (userId)
+    }
 
+    // GET /accounts
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<AccountDto>>> getMyAccounts() {
+        List<AccountDto> accounts = accountService.getMyAccounts(getCurrentUserId());
+        return ResponseEntity.ok(ApiResponse.success(accounts));
+    }
+    // GET /accounts/{accountId}
     @GetMapping("/{accountId}")
     public ResponseEntity<ApiResponse<AccountDto>> getAccountDetail(@PathVariable("accountId") String accountId) {
         AccountDto account = accountService.getAccountDetail(accountId, getCurrentUserId());
         return ResponseEntity.ok(ApiResponse.success(account));
     }
 
-    // GET /accounts/{accountId}/balance
+    // GET /accounts/balance/accountId
     @GetMapping("/balance/{accountId}")
     public ResponseEntity<ApiResponse<Map<String, BigDecimal>>> getBalance(@PathVariable("accountId") String accountId) {
         BigDecimal balance = accountService.getBalance(accountId, getCurrentUserId());
@@ -238,5 +239,12 @@ public class AccountController {
     public ResponseEntity<ApiResponse<Void>> updatePin(@PathVariable("id") String id, @Valid @RequestBody UpdatePinRequest request) {
         accountService.updatePin(id, getCurrentUserId(), request.oldPin(), request.newPin());
         return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    // POST /accounts/{id}/pin
+    @PostMapping("/{id}/pin")
+    public ResponseEntity<ApiResponse<Void>> createPin(@PathVariable("id") String id, @Valid @RequestBody PinRequest request) {
+        accountService.createPin(id, getCurrentUserId(), request.newPin());
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(null));
     }
 }

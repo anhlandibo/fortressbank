@@ -1,8 +1,28 @@
 package com.uit.userservice.dto.request;
 
+import com.uit.userservice.validator.DobConstraint;
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import lombok.*;
 
-public record UpdateUserRequest(
-        @NotBlank String fullName,
-        String avatarUrl
-) { }
+import java.time.LocalDate;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@Getter
+@Setter
+public class UpdateUserRequest {
+
+    @NotBlank(message = "FULLNAME_REQUIRED")
+    @Pattern(regexp = "^[\\p{L} .'-]+$", message = "FULLNAME_INVALID_FORMAT")
+    private String fullName;
+
+    @Email(message = "EMAIL_INVALID_FORMAT")
+    private String email;
+
+    @DobConstraint(minAge = 18, message = "USER_MUST_BE_18_YEARS_OLD")
+    private LocalDate dob;
+}
