@@ -50,10 +50,34 @@ public class NotificationService {
                 );
     }
 
-    public List<NotificationMessage> getNotifications() {
-        return notificationRepo.findAll();
-    }
+        public List<NotificationMessage> getNotifications() {
+            return notificationRepo.findAll();
+        }
 
+    /**
+     * Send push notification via Firebase Cloud Messaging
+     */
+    public void sendPushNotification(String deviceToken, String title, String body) {
+        try {
+            log.info("Sending push notification to token: {}", deviceToken);
+            
+            SendNotificationRequest request = SendNotificationRequest.builder()
+                    .deviceToken(deviceToken)
+                    .title(title)
+                    .content(body)
+                    .type("NOTIFICATION")
+                    .build();
+            
+            List<String> tokens = new ArrayList<>();
+            tokens.add(deviceToken);
+            
+            firebaseMessagingService.sendNotification(tokens, request);
+            log.info("Push notification sent successfully");
+            
+        } catch (Exception e) {
+            log.error("Failed to send push notification: {}", e.getMessage(), e);
+        }
+    }
 
     public NotificationMessage createAndSendNotification(SendNotificationRequest request) throws FirebaseMessagingException {
         NotificationMessage newNotification = NotificationMessage.builder()
@@ -97,17 +121,7 @@ public class NotificationService {
 
         notificationRepo.save(newNotification);
         firebaseMessagingService.sendNotification(tokens, request);
-//        CompletableFuture.runAsync(() -> {
-//            try {
-//            } catch (FirebaseMessagingException e) {
-//                e.printStackTrace();
-//                // Optionally update notification status sent=false
-//            }
-//        });
 
-//        firebaseMessagingService.sendNotification(newNotification);
-
-//        SendNotificationDto dto = No
         return newNotification;
     }
 }

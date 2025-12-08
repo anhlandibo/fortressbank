@@ -6,3 +6,7 @@ networks:
 volumes:
   userdb_data:
   redis_data:
+  referencedb_data:
+  transactiondb_data:
+  accountdb_data:
+  keycloak_db_data:

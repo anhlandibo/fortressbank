@@ -18,7 +18,6 @@ public class FirebaseMessagingService {
     private final FirebaseMessaging firebaseMessaging;
 
     public void sendNotification(List<String> deviceTokens, SendNotificationRequest request) throws FirebaseMessagingException {
-//        firebaseMessaging = FirebaseMessaging.getInstance();
         Notification notification = Notification
                 .builder()
                 .setTitle(request.getTitle())
@@ -39,14 +38,10 @@ public class FirebaseMessagingService {
 
         CompletableFuture.runAsync(() -> {
             try {
-//                firebaseMessagingService.sendNotification(newNotification);
                 firebaseMessaging.sendEach(messages);
             } catch (FirebaseMessagingException e) {
                 e.printStackTrace();
-//                // Optionally update notification status sent=false
             }
         });
-
-//        return "Notification Sent Successfully";
     }
 }

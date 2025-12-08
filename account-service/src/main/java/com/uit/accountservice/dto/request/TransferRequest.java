@@ -12,7 +12,7 @@ import java.math.BigDecimal;
 @NoArgsConstructor
 public class TransferRequest implements Serializable {
     private static final long serialVersionUID = 1L;
-    private String fromAccountId;
-    private String toAccountId;
+    private String senderAccountId;
+    private String receiverAccountId;
     private BigDecimal amount;
 }

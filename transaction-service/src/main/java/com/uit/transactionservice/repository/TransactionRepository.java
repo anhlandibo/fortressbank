@@ -1,0 +1,44 @@
+package com.uit.transactionservice.repository;
+
+import com.uit.transactionservice.entity.Transaction;
+import com.uit.transactionservice.entity.TransactionStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.stereotype.Repository;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+
+
+@Repository
+public interface TransactionRepository extends JpaRepository<Transaction, java.util.UUID> {
+
+    Page<Transaction> findBySenderAccountId(String senderAccountId, Pageable pageable);
+
+    Page<Transaction> findByStatus(TransactionStatus status, Pageable pageable);
+
+    Page<Transaction> findBySenderAccountIdOrReceiverAccountId(String senderAccountId, String receiverAccountId, Pageable pageable);
+
+    List<Transaction> findByCreatedAtBetween(LocalDateTime start, LocalDateTime end);
+
+    @Query("SELECT t FROM Transaction t WHERE t.senderAccountId = :accountId OR t.receiverAccountId = :accountId")
+    Page<Transaction> findByAccountId(String accountId, Pageable pageable);
+
+    @Query(value = "SELECT COALESCE(SUM(amount + fee_amount), 0) FROM transactions " +
+           "WHERE sender_account_id = :accountId " +
+           "AND DATE(created_at) = CURRENT_DATE " +
+           "AND status IN ('COMPLETED', 'PROCESSING')",
+           nativeQuery = true)
+    BigDecimal calculateDailyUsed(String accountId);
+
+    @Query(value = "SELECT COALESCE(SUM(amount + fee_amount), 0) FROM transactions " +
+           "WHERE sender_account_id = :accountId " +
+           "AND EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM CURRENT_DATE) " +
+           "AND EXTRACT(MONTH FROM created_at) = EXTRACT(MONTH FROM CURRENT_DATE) " +
+           "AND status IN ('COMPLETED', 'PROCESSING')",
+           nativeQuery = true)
+    BigDecimal calculateMonthlyUsed(String accountId);
+}

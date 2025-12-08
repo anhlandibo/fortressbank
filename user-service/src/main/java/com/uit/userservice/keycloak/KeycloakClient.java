@@ -1,0 +1,264 @@
+package com.uit.userservice.keycloak;
+
+import com.uit.userservice.config.KeycloakProperties;
+import com.uit.sharedkernel.exception.AppException;
+import com.uit.sharedkernel.exception.ErrorCode;
+import com.uit.userservice.dto.response.TokenResponse;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.*;
+import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.HttpStatusCodeException;
+import org.springframework.web.client.RestTemplate;
+
+import java.net.URI;
+import java.util.Map;
+
+@Component
+@RequiredArgsConstructor
+@Slf4j
+public class KeycloakClient {
+
+    private final KeycloakProperties properties;
+    private final RestTemplate restTemplate;
+
+    private String tokenEndpoint() {
+        return properties.getAuthServerUrl()
+                + "/realms/" + properties.getRealm()
+                + "/protocol/openid-connect/token";
+    }
+
+    private String logoutEndpoint() {
+        return properties.getAuthServerUrl()
+                + "/realms/" + properties.getRealm()
+                + "/protocol/openid-connect/logout";
+    }
+
+    private String usersEndpoint() {
+        return properties.getAuthServerUrl()
+                + "/admin/realms/" + properties.getRealm()
+                + "/users";
+    }
+
+    private String userPasswordEndpoint(String userId) {
+        return usersEndpoint() + "/" + userId + "/reset-password";
+    }
+
+    private String userResourceEndpoint(String userId) {
+        return usersEndpoint() + "/" + userId;
+    }
+    // =============== TOKEN FLOWS ===============
+
+    public TokenResponse loginWithPassword(String username, String password) {
+        return callTokenEndpoint(Map.of(
+                "grant_type", "password",
+                "username", username,
+                "password", password
+        ));
+    }
+
+    public TokenResponse refreshToken(String refreshToken) {
+        return callTokenEndpoint(Map.of(
+                "grant_type", "refresh_token",
+                "refresh_token", refreshToken
+        ));
+    }
+
+    private TokenResponse callTokenEndpoint(Map<String, String> extraParams) {
+        String url = tokenEndpoint();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("client_id", properties.getClientId());
+        form.add("client_secret", properties.getClientSecret());
+        form.add("scope", "openid");
+        extraParams.forEach(form::add);
+
+        HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(form, headers);
+
+        try {
+            ResponseEntity<TokenResponse> response =
+                    restTemplate.postForEntity(url, entity, TokenResponse.class);
+
+            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+                throw new AppException(ErrorCode.USER_CREATION_FAILED, "Keycloak token request failed");
+            }
+            return response.getBody();
+        } catch (HttpStatusCodeException ex) {
+            log.error("Keycloak token error: {}", ex.getResponseBodyAsString());
+            throw new AppException(ErrorCode.FORBIDDEN, "Authentication failed");
+        }
+    }
+
+    public void logout(String refreshToken) {
+        String url = logoutEndpoint();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("client_id", properties.getClientId());
+        form.add("client_secret", properties.getClientSecret());
+        form.add("refresh_token", refreshToken);
+
+        try {
+            restTemplate.postForEntity(url, new HttpEntity<>(form, headers), Void.class);
+        } catch (HttpStatusCodeException ex) {
+            log.error("Keycloak logout error: {}", ex.getResponseBodyAsString());
+            // không throw, logout lỗi cũng không cần fail request
+        }
+    }
+
+    // =============== ADMIN TOKEN ===============
+
+    private String getAdminAccessToken() {
+        String url = tokenEndpoint();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("grant_type", "client_credentials");
+        form.add("client_id", properties.getClientId());
+        form.add("client_secret", properties.getClientSecret());
+
+        try {
+            ResponseEntity<TokenResponse> response =
+                    restTemplate.postForEntity(url, new HttpEntity<>(form, headers), TokenResponse.class);
+
+            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+                throw new AppException(ErrorCode.USER_CREATION_FAILED, "Cannot get admin token from Keycloak");
+            }
+
+            return response.getBody().accessToken();
+        } catch (HttpStatusCodeException ex) {
+            log.error("Keycloak admin token error: {}", ex.getResponseBodyAsString());
+            throw new AppException(ErrorCode.USER_CREATION_FAILED, "Cannot get admin token from Keycloak");
+        }
+    }
+
+    // =============== ADMIN USER APIS ===============
+
+    public String createUser(String username, String email, String fullName, String password) {
+        String adminToken = getAdminAccessToken();
+
+        String url = usersEndpoint();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(adminToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        Map<String, Object> body = Map.of(
+                "username", username,
+                "email", email,
+                "enabled", true,
+                "emailVerified", false,
+                "firstName", fullName, // đơn giản dùng fullName làm firstName
+                "credentials", new Object[]{
+                        Map.of(
+                                "type", "password",
+                                "value", password,
+                                "temporary", false
+                        )
+                }
+        );
+
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+
+        try {
+            ResponseEntity<Void> response = restTemplate.postForEntity(url, entity, Void.class);
+
+            if (response.getStatusCode() != HttpStatus.CREATED) {
+                throw new AppException(ErrorCode.USER_CREATION_FAILED);
+            }
+
+            String location = response.getHeaders().getFirst(HttpHeaders.LOCATION);
+            if (location == null) {
+                throw new AppException(ErrorCode.USER_CREATION_FAILED);
+            }
+
+            URI uri = URI.create(location);
+            String path = uri.getPath();
+            return path.substring(path.lastIndexOf('/') + 1);
+        } catch (HttpStatusCodeException ex) {
+            log.error("Keycloak create user error: {}", ex.getResponseBodyAsString());
+            throw new AppException(ErrorCode.USER_CREATION_FAILED);
+        }
+    }
+
+    public void resetPassword(String userId, String newPassword) {
+        String adminToken = getAdminAccessToken();
+
+        String url = userPasswordEndpoint(userId);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(adminToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        Map<String, Object> body = Map.of(
+                "type", "password",
+                "value", newPassword,
+                "temporary", false
+        );
+
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+
+        try {
+            restTemplate.exchange(url, HttpMethod.PUT, entity, Void.class);
+        } catch (HttpStatusCodeException ex) {
+            log.error("Keycloak reset password error: {}", ex.getResponseBodyAsString());
+            throw new AppException(ErrorCode.FORBIDDEN, "Cannot change password");
+        }
+    }
+
+    /**
+     * Dùng để verify oldPassword trong flow change-password
+     */
+    public void verifyPassword(String username, String oldPassword) {
+        // nếu login thành công thì ok, nếu lỗi thì throw
+        loginWithPassword(username, oldPassword);
+    }
+
+    // 1. Update User Status (Lock/Unlock)
+    public void updateUserStatus(String userId, boolean isEnabled) {
+        String adminToken = getAdminAccessToken();
+        String url = userResourceEndpoint(userId);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(adminToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        Map<String, Object> body = Map.of("enabled", isEnabled);
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+
+        try {
+            restTemplate.exchange(url, HttpMethod.PUT, entity, Void.class);
+        } catch (HttpStatusCodeException ex) {
+            log.error("Keycloak update status error: {}", ex.getResponseBodyAsString());
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
+
+    // 2. Get User Detail from Keycloak (để lấy real-time status)
+    public Map<String, Object> getUserFromKeycloak(String userId) {
+        String adminToken = getAdminAccessToken();
+        String url = userResourceEndpoint(userId);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(adminToken);
+
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+        try {
+            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, entity, Map.class);
+            return response.getBody();
+        } catch (HttpStatusCodeException ex) {
+            log.error("Keycloak get user error: {}", ex.getResponseBodyAsString());
+            throw new AppException(ErrorCode.USER_NOT_FOUND);
+        }
+    }
+}

@@ -4,13 +4,12 @@ import com.uit.accountservice.dto.AccountDto;
 import com.uit.accountservice.dto.request.TransferRequest;
 import com.uit.accountservice.dto.request.VerifyTransferRequest;
 import com.uit.accountservice.dto.response.ChallengeResponse;
-import com.uit.accountservice.entity.TransferStatus;
+import com.uit.accountservice.entity.enums.TransferStatus;
 import com.uit.accountservice.service.AccountService;
 import com.uit.accountservice.service.TransferAuditService;
 import jakarta.xml.bind.JAXBElement;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.ws.context.MessageContext;
 import org.springframework.ws.server.endpoint.annotation.Endpoint;
 import org.springframework.ws.server.endpoint.annotation.PayloadRoot;
@@ -64,8 +63,8 @@ public class TransferEndpoint {
      * 
      * SOAP Request:
      * <TransferRequest>
-     *   <fromAccountId>ACC001</fromAccountId>
-     *   <toAccountId>ACC002</toAccountId>
+     *   <senderAccountId>ACC001</senderAccountId>
+     *   <receiverAccountId>ACC002</receiverAccountId>
      *   <amount>1000.00</amount>
      *   <currency>VND</currency>
      *   <deviceFingerprint>...</deviceFingerprint>
@@ -81,8 +80,8 @@ public class TransferEndpoint {
 
         TransferRequestType transferRequest = request.getValue();
         log.info("SOAP Transfer request: {} → {} amount {}", 
-                transferRequest.getFromAccountId(), 
-                transferRequest.getToAccountId(), 
+                transferRequest.getSenderAccountId(),
+                transferRequest.getReceiverAccountId(),
                 transferRequest.getAmount());
 
         try {
@@ -94,8 +93,8 @@ public class TransferEndpoint {
 
             // Build internal transfer request
             TransferRequest internalRequest = new TransferRequest();
-            internalRequest.setFromAccountId(transferRequest.getFromAccountId());
-            internalRequest.setToAccountId(transferRequest.getToAccountId());
+            internalRequest.setSenderAccountId(transferRequest.getSenderAccountId());
+            internalRequest.setReceiverAccountId(transferRequest.getReceiverAccountId());
             internalRequest.setAmount(transferRequest.getAmount());
 
             // Call existing AccountService (handles risk assessment, OTP, etc.)
@@ -145,8 +144,8 @@ public class TransferEndpoint {
                 String userId = (String) messageContext.getProperty("userId");
                 auditService.logTransfer(
                         userId,
-                        transferRequest.getFromAccountId(),
-                        transferRequest.getToAccountId(),
+                        transferRequest.getSenderAccountId(),
+                        transferRequest.getReceiverAccountId(),
                         transferRequest.getAmount(),
                         TransferStatus.FAILED,
                         null,
@@ -222,8 +221,8 @@ public class TransferEndpoint {
     // JAXB Types (simplified, normally generated from XSD)
     
     public static class TransferRequestType {
-        private String fromAccountId;
-        private String toAccountId;
+        private String senderAccountId;
+        private String receiverAccountId;
         private BigDecimal amount;
         private String currency;
         private String deviceFingerprint;
@@ -231,10 +230,10 @@ public class TransferEndpoint {
         private String location;
 
         // Getters and setters
-        public String getFromAccountId() { return fromAccountId; }
-        public void setFromAccountId(String fromAccountId) { this.fromAccountId = fromAccountId; }
-        public String getToAccountId() { return toAccountId; }
-        public void setToAccountId(String toAccountId) { this.toAccountId = toAccountId; }
+        public String getSenderAccountId() { return senderAccountId; }
+        public void setSenderAccountId(String senderAccountId) { this.senderAccountId = senderAccountId; }
+        public String getReceiverAccountId() { return receiverAccountId; }
+        public void setReceiverAccountId(String receiverAccountId) { this.receiverAccountId = receiverAccountId; }
         public BigDecimal getAmount() { return amount; }
         public void setAmount(BigDecimal amount) { this.amount = amount; }
         public String getCurrency() { return currency; }

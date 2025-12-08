@@ -1,13 +1,17 @@
 package com.uit.sharedkernel.constants;
 
 public class RabbitMQConstants {
-    // Notification
     // Exchange
-    public static final String NOTIFICATION_EXCHANGE = "notifications.exchange";
+    public static final String TRANSACTION_EXCHANGE = "transaction-exchange";
 
-    // Queue
-    public static final String NOTIFICATION_TRANSFER_QUEUE = "notification.transfer.queue";
+    // Routing Keys
+    public static final String TRANSACTION_CREATED = "transaction.created";
+    public static final String MONEY_TRANSFERRED = "money.transferred";
 
-    // Key
-    public static final String NOTIF_TRANSFER_CREATED_KEY = "transfer.created";
+    // Queues
+    public static final String NOTIFICATION_QUEUE = "notification-queue";
+
+    private RabbitMQConstants() {
+        // Prevent instantiation
+    }
 }

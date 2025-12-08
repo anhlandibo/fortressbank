@@ -1,7 +1,7 @@
 package com.uit.accountservice.repository;
 
 import com.uit.accountservice.entity.TransferAuditLog;
-import com.uit.accountservice.entity.TransferStatus;
+import com.uit.accountservice.entity.enums.TransferStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -18,12 +18,12 @@ public interface TransferAuditLogRepository extends JpaRepository<TransferAuditL
     // Find by user ID with pagination
     Page<TransferAuditLog> findByUserId(String userId, Pageable pageable);
     
-    // Find by account (either from or to) with pagination
-    @Query("SELECT t FROM TransferAuditLog t WHERE t.fromAccountId = ?1 OR t.toAccountId = ?1")
+    // Find by account (either sender or receiver) with pagination
+    @Query("SELECT t FROM TransferAuditLog t WHERE t.senderAccountId = ?1 OR t.receiverAccountId = ?1")
     Page<TransferAuditLog> findByAccountId(String accountId, Pageable pageable);
     
-    // Find by account (either from or to) without pagination
-    @Query("SELECT t FROM TransferAuditLog t WHERE t.fromAccountId = ?1 OR t.toAccountId = ?1 ORDER BY t.timestamp DESC")
+    // Find by account (either sender or receiver) without pagination
+    @Query("SELECT t FROM TransferAuditLog t WHERE t.senderAccountId = ?1 OR t.receiverAccountId = ?1 ORDER BY t.timestamp DESC")
     List<TransferAuditLog> findByAccountId(String accountId);
     
     // Find by status with pagination

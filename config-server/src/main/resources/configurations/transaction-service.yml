@@ -1,0 +1,62 @@
+server:
+  port: ${SERVER_PORT:4004}
+  max-http-request-header-size: 64KB
+
+  # spring:
+  #   security:
+  #     oauth2:
+  #       resourceserver:
+  #         jwt:
+  #           issuer-uri: http://keycloak:8080/realms/fortressbank-realm
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://transaction-service-db:5432/transactiondb}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:123456}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  sql:
+    init:
+      mode: never
+
+# Service Communication Configuration
+services:
+  account-service:
+    url: ${ACCOUNT_SERVICE_URL:http://account-service:4001}
+    timeout: 5000
+
+# Eureka Configuration
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: ${EUREKA_DEFAULT_ZONE:http://discovery:8761/eureka}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    preferIpAddress: true
+    instance-id: ${spring.application.name}:${random.value}
+
+# Logging
+logging:
+  level:
+    com.uit.transactionservice: INFO
+    org.springframework.security: INFO
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
