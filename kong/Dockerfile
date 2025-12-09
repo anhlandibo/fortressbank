@@ -50,4 +50,9 @@ RUN apt-get update && \
 # Copy the renamed plugin to the right location
 COPY --from=builder /tmp/openid-connect /usr/local/share/lua/5.1/kong/plugins/openid-connect
 
+# Copy custom single-device plugin
+COPY plugins/single-device /usr/local/share/lua/5.1/kong/plugins/single-device
+
+ENV KONG_PLUGINS=bundled,openid-connect,single-device
+
 USER kong
