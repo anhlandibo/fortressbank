@@ -3,7 +3,6 @@ package com.uit.userservice.security;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
-import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -23,7 +22,13 @@ import java.util.stream.Collectors;
 @EnableMethodSecurity
 public class SecurityConfig {
     private static final String[] PUBLIC_ENDPOINTS = {
-            "/auth/register", "/auth/login", "/auth/refresh", "/auth/logout"
+            "/auth/register", 
+            "/auth/login", 
+            "/auth/refresh", 
+            "/auth/logout",
+            "/auth/validate-registration",
+            "/auth/send-otp",
+            "/auth/verify-otp"
     };
 
     @Bean
@@ -32,10 +37,10 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/**").permitAll()
-                        .requestMatchers(HttpMethod.POST, PUBLIC_ENDPOINTS).permitAll()
-
-                        // Các request còn lại phải đăng nhập
+                    .requestMatchers("/actuator/**").permitAll()
+                    // Allow ALL /auth endpoints (registration, login, logout, refresh, validate, send-otp, verify-otp)
+                    .requestMatchers("/auth/**").permitAll()
+                    // All other requests require authentication
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt ->

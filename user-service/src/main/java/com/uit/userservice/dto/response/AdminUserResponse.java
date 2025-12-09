@@ -10,6 +10,7 @@ public record AdminUserResponse(
         String fullName,
         String citizenId,
         LocalDate dob,
-        boolean enabled, // Trạng thái tài khoản (Active/Locked)
+        String phoneNumber,
+        boolean enabled, 
         LocalDateTime createdAt
 ) { }

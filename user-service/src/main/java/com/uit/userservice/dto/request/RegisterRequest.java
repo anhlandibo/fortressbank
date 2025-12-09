@@ -10,8 +10,6 @@ import java.time.LocalDate;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Getter
-@Setter
 public class RegisterRequest {
 
     @NotBlank(message = "USERNAME_REQUIRED")
@@ -43,4 +41,7 @@ public class RegisterRequest {
     @NotBlank(message = "CITIZEN_ID_REQUIRED")
     @Pattern(regexp = "^\\d{9}|\\d{12}$", message = "CITIZEN_ID_INVALID") // 9 hoặc 12 số
     private String citizenId;
+
+    @Pattern(regexp = "^[0-9]{10,11}$", message = "PHONE_NUMBER_INVALID_FORMAT")
+    private String phoneNumber;
 }

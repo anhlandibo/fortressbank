@@ -61,14 +61,12 @@ class AccountServiceIntegrationTest extends AbstractIntegrationTest {
 
         aliceAccount = accountRepository.saveAndFlush(Account.builder()
                 .userId("alice")
-                .accountType("CHECKING")
                 .balance(BigDecimal.valueOf(1000.00))
                 .createdAt(LocalDateTime.now())
                 .build());
 
         bobAccount = accountRepository.saveAndFlush(Account.builder()
                 .userId("bob")
-                .accountType("SAVINGS")
                 .balance(BigDecimal.valueOf(2000.00))
                 .createdAt(LocalDateTime.now())
                 .build());

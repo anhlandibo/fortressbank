@@ -521,16 +521,30 @@ public class AccountService {
 
     @Transactional
     public AccountDto createAccount(String userId, CreateAccountRequest request) {
-        if (!isValidAccountType(request.accountType())) {
-            throw new AppException(ErrorCode.BAD_REQUEST, "Invalid account type");
+        String accountNumber;
+        
+        // Determine account number based on accountNumberType
+        if ("PHONE_NUMBER".equals(request.accountNumberType())) {
+            // Use phone number as account number
+            if (request.phoneNumber() == null || request.phoneNumber().isEmpty()) {
+                throw new AppException(ErrorCode.BAD_REQUEST, "Phone number is required when accountNumberType is PHONE_NUMBER");
+            }
+            accountNumber = request.phoneNumber();
+            
+            // Check if account with this phone number already exists
+            if (accountRepository.findByAccountNumber(accountNumber).isPresent()) {
+                throw new AppException(ErrorCode.BAD_REQUEST, "Account with this phone number already exists");
+            }
+        } else if ("AUTO_GENERATE".equals(request.accountNumberType())) {
+            // Generate unique account number
+            accountNumber = generateUniqueAccountNumber();
+        } else {
+            throw new AppException(ErrorCode.BAD_REQUEST, "Invalid accountNumberType: " + request.accountNumberType());
         }
-        // Logic sinh số tài khoản ngẫu nhiên 10 số
-        String accountNumber = generateUniqueAccountNumber();
 
         Account account = Account.builder()
                 .userId(userId)
                 .accountNumber(accountNumber)
-                .accountType(request.accountType())
                 .balance(BigDecimal.ZERO)
                 .status(AccountStatus.ACTIVE)
                 .build();
@@ -611,13 +625,10 @@ public class AccountService {
         return accNum;
     }
 
-    private boolean isValidAccountType(String type) {
-        return type != null && (type.equalsIgnoreCase("SPEND") || type.equalsIgnoreCase("SAVING"));
-    }
-
     private void validatePinFormat(String pin) {
         if (pin == null || !pin.matches("\\d{6}")) {
             throw new AppException(ErrorCode.BAD_REQUEST, "PIN must be exactly 6 digits");
         }
     }
+
 }

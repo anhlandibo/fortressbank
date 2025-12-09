@@ -50,6 +50,8 @@ public class UserServiceImpl implements UserService {
                 .orElseThrow(() -> new AppException(ErrorCode.USER_ALREADY_EXISTS, "User not found"));
 
         user.setFullName(request.getFullName());
+        user.setDob(request.getDob());
+        user.setPhoneNumber(request.getPhoneNumber());
 
         return toResponse(user);
     }
@@ -77,6 +79,9 @@ public class UserServiceImpl implements UserService {
                 user.getUsername(),
                 user.getEmail(),
                 user.getFullName(),
+                user.getCitizenId(),
+                user.getDob(),
+                user.getPhoneNumber(),
                 user.getCreatedAt()
         );
     }
@@ -94,6 +99,7 @@ public class UserServiceImpl implements UserService {
                 user.getFullName(),
                 user.getCitizenId(),
                 user.getDob(),
+                user.getPhoneNumber(),
                 true,
                 user.getCreatedAt()
         ));
@@ -129,10 +135,9 @@ public class UserServiceImpl implements UserService {
                 user.getFullName(),
                 user.getCitizenId(),
                 user.getDob(),
+                user.getPhoneNumber(),
                 isEnabled,
                 user.getCreatedAt()
         );
     }
-
-
 }

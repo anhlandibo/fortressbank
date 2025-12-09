@@ -37,10 +37,6 @@ public class Account {
     private String userId;
 
     @NotNull
-    @Column(name = "account_type", nullable = false)
-    private String accountType;
-
-    @NotNull
     @DecimalMin(value = "0.0", inclusive = true)
     @Column(nullable = false)
     private BigDecimal balance;

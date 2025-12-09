@@ -21,7 +21,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Optional;
 
 @RestController
 @RequestMapping("/accounts")
@@ -33,7 +32,7 @@ public class AccountController {
     private final AccountMapper accountMapper;
     private final TransferAuditService auditService;
     
-    //change this to check health for this endpoint
+    // change this to check health for this endpoint
     @GetMapping("/")
     public Map<String, Object> healthCheck() {
         return Map.of("status", "Account Service is running");
@@ -41,10 +40,23 @@ public class AccountController {
     
     @GetMapping("/my-accounts")
     @RequireRole("user")
-    public Map<String, Object> getMyAccounts(HttpServletRequest request) {
+    public Map<String, Object> getMyAccountsWithUserInfo(HttpServletRequest request) {
         @SuppressWarnings("unchecked")
         Map<String, Object> userInfo = (Map<String, Object>) request.getAttribute("userInfo");
-        String userId = (String) userInfo.get("sub");
+        String userId = null;
+        if (userInfo != null && userInfo.get("sub") != null) {
+            userId = (String) userInfo.get("sub");
+        } else {
+            // Fallback to SecurityContext (when gateway doesn't set request attribute)
+            var authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            if (authentication != null) {
+                userId = authentication.getName();
+            }
+        }
+
+        if (userId == null) {
+            throw new com.uit.sharedkernel.exception.AppException(com.uit.sharedkernel.exception.ErrorCode.FORBIDDEN, "User not authenticated");
+        }
 
         List<AccountDto> accounts = accountService.getAccountsByUserId(userId);
         
@@ -55,22 +67,6 @@ public class AccountController {
         );
     }
     
-    /**
-     * Get a specific account by ID with ownership validation.
-     * Users can only access accounts they own.
-     */
-    /*
-    @GetMapping("/{accountId}")
-    @PreAuthorize("@accountService.isOwner(#accountId, authentication.name)")
-    @RequireRole("user")
-    public ResponseEntity<AccountDto> getAccount(@PathVariable String accountId) {
-        return accountRepository.findById(accountId)
-                .map(accountMapper::toDto)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
-    */
-
     @GetMapping("/dashboard")
     @RequireRole("admin")  // Like requireRole('admin') in Express
     public Map<String, Object> getDashboard(HttpServletRequest request) {
@@ -154,13 +150,6 @@ public class AccountController {
     }
 
     /**
-     * Credit (add) amount to an account.
-     */
-
-
-
-
-    /**
      * Get velocity check for a user (admin only).
      * Returns count of recent transfers for fraud detection.
      */
@@ -181,10 +170,11 @@ public class AccountController {
     }
 
     /**
-     * Get all accounts.
+     * Get all accounts (Admin only).
      * Endpoint to retrieve a list of all accounts in the system.
      */
     @GetMapping("/all")
+    @RequireRole("admin")
     public ResponseEntity<List<AccountDto>> getAllAccounts() {
         List<AccountDto> accounts = accountService.getAllAccounts();
         return ResponseEntity.ok(accounts);
@@ -204,14 +194,14 @@ public class AccountController {
         List<AccountDto> accounts = accountService.getMyAccounts(getCurrentUserId());
         return ResponseEntity.ok(ApiResponse.success(accounts));
     }
-    // GET /accounts/{accountId}
-    @GetMapping("/{accountId}")
+    
+   @GetMapping("/{accountId}")
     public ResponseEntity<ApiResponse<AccountDto>> getAccountDetail(@PathVariable("accountId") String accountId) {
         AccountDto account = accountService.getAccountDetail(accountId, getCurrentUserId());
         return ResponseEntity.ok(ApiResponse.success(account));
     }
 
-    // GET /accounts/balance/accountId
+    // GET /accounts/{accountId}/balance
     @GetMapping("/balance/{accountId}")
     public ResponseEntity<ApiResponse<Map<String, BigDecimal>>> getBalance(@PathVariable("accountId") String accountId) {
         BigDecimal balance = accountService.getBalance(accountId, getCurrentUserId());
@@ -233,18 +223,17 @@ public class AccountController {
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
+    // POST /accounts/{id}/pin
+    @PostMapping("/{id}/pin")
+    public ResponseEntity<ApiResponse<Void>> createPin(@PathVariable("id") String id, @Valid @RequestBody PinRequest request) {
+        accountService.createPin(id, getCurrentUserId(), request.newPin());
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(null));
+    }
 
     // PUT /accounts/{id}/pin
     @PutMapping("/{id}/pin")
     public ResponseEntity<ApiResponse<Void>> updatePin(@PathVariable("id") String id, @Valid @RequestBody UpdatePinRequest request) {
         accountService.updatePin(id, getCurrentUserId(), request.oldPin(), request.newPin());
         return ResponseEntity.ok(ApiResponse.success(null));
-    }
-
-    // POST /accounts/{id}/pin
-    @PostMapping("/{id}/pin")
-    public ResponseEntity<ApiResponse<Void>> createPin(@PathVariable("id") String id, @Valid @RequestBody PinRequest request) {
-        accountService.createPin(id, getCurrentUserId(), request.newPin());
-        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(null));
     }
 }

@@ -19,29 +19,29 @@ public class AdminController {
     // API search user: GET /admin/users?keyword=...&page=0&size=10
     @GetMapping
     public ApiResponse<Page<AdminUserResponse>> getUsers(
-            @RequestParam(required = false, defaultValue = "") String keyword,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size
+            @RequestParam(name = "keyword", required = false, defaultValue = "") String keyword,
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "10") int size
     ) {
         return ApiResponse.success(userService.searchUsers(keyword, page, size));
     }
 
     // API xem chi tiết user: GET /admin/users/{userId}
     @GetMapping("/{userId}")
-    public ApiResponse<AdminUserResponse> getUserDetail(@PathVariable String userId) {
+    public ApiResponse<AdminUserResponse> getUserDetail(@PathVariable("userId") String userId) {
         return ApiResponse.success(userService.getUserDetailForAdmin(userId));
     }
 
     // API khóa tài khoản: PUT /admin/users/{userId}/lock
     @PutMapping("/{userId}/lock")
-    public ApiResponse<String> lockUser(@PathVariable String userId) {
+    public ApiResponse<String> lockUser(@PathVariable("userId") String userId) {
         userService.lockUser(userId);
         return ApiResponse.success("User account has been locked successfully.");
     }
 
     // API mở khóa: PUT /admin/users/{userId}/unlock
     @PutMapping("/{userId}/unlock")
-    public ApiResponse<String> unlockUser(@PathVariable String userId) {
+    public ApiResponse<String> unlockUser(@PathVariable("userId") String userId) {
         userService.unlockUser(userId);
         return ApiResponse.success("User account has been unlocked successfully.");
     }

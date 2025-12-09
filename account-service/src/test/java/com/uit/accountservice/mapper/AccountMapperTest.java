@@ -22,7 +22,6 @@ class AccountMapperTest {
         Account account = Account.builder()
                 .accountId("acc-123")
                 .userId("user-123")
-                .accountType("CHECKING")
                 .balance(BigDecimal.valueOf(1000.00))
                 .createdAt(LocalDateTime.now())
                 .build();
@@ -32,7 +31,6 @@ class AccountMapperTest {
         assertThat(dto).isNotNull();
         assertThat(dto.getAccountId()).isEqualTo(account.getAccountId());
         assertThat(dto.getUserId()).isEqualTo(account.getUserId());
-        assertThat(dto.getAccountType()).isEqualTo(account.getAccountType());
         assertThat(dto.getBalance()).isEqualTo(account.getBalance());
     }
 

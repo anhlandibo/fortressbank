@@ -16,7 +16,7 @@ keycloak:
   auth-server-url: http://keycloak:8080
   realm: fortressbank-realm
   client-id: kong
-  client-secret: XLODsjH5G3f9iqGftbrkdHeNw3NVfNdZ
+  client-secret: KzZmVQX8UbzbsNDNL79KwphKbhTFKfR2
 
 eureka:
   client:

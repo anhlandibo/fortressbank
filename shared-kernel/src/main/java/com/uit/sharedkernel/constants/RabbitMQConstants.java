@@ -10,7 +10,10 @@ public class RabbitMQConstants {
     
     // Queues
     public static final String NOTIFICATION_QUEUE = "notification-queue";
-    
+
+    public static final String INTERNAL_EXCHANGE = "internal.exchange";
+    public static final String USER_CREATED_QUEUE = "user.created.queue";
+    public static final String USER_CREATED_ROUTING_KEY = "user.created";
     private RabbitMQConstants() {
         // Prevent instantiation
     }

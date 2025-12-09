@@ -1,5 +1,7 @@
 package com.uit.accountservice.config;
 
+import com.uit.accountservice.security.ParseUserInfoFilter;
+import com.uit.accountservice.security.RoleCheckInterceptor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.lang.NonNull;
@@ -9,6 +11,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -17,13 +20,19 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @EnableMethodSecurity(prePostEnabled = true)
 public class SecurityConfig implements WebMvcConfigurer {
     
-    public SecurityConfig() {
+    private final ParseUserInfoFilter parseUserInfoFilter;
+    private final RoleCheckInterceptor roleCheckInterceptor;
+    
+    public SecurityConfig(ParseUserInfoFilter parseUserInfoFilter, RoleCheckInterceptor roleCheckInterceptor) {
+        this.parseUserInfoFilter = parseUserInfoFilter;
+        this.roleCheckInterceptor = roleCheckInterceptor;
     }
     
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             .csrf(csrf -> csrf.disable())
+            .addFilterBefore(parseUserInfoFilter, UsernamePasswordAuthenticationFilter.class)
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/ws/**").permitAll() // Allow SOAP endpoints (JWT validated by SoapSecurityInterceptor)
                 .anyRequest().permitAll() // Kong already authenticated for REST
@@ -33,6 +42,7 @@ public class SecurityConfig implements WebMvcConfigurer {
     
     @Override
     public void addInterceptors(@NonNull InterceptorRegistry registry) {
+        registry.addInterceptor(roleCheckInterceptor);
     }
 
     @Bean

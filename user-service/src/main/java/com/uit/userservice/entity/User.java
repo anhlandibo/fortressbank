@@ -28,6 +28,9 @@ public class User {
     @Column(unique = true)
     private String citizenId;
 
+    @Column(unique = true)
+    private String phoneNumber;
+
     @Column(updatable = false)
     private LocalDateTime createdAt;
 
