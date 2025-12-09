@@ -6,10 +6,10 @@ import com.uit.accountservice.dto.request.TransferRequest;
 import com.uit.accountservice.dto.request.VerifyTransferRequest;
 import com.uit.accountservice.dto.response.ChallengeResponse;
 import com.uit.accountservice.entity.Account;
+import com.uit.accountservice.entity.enums.TransferStatus;
 import com.uit.accountservice.mapper.AccountMapper;
 import com.uit.accountservice.repository.AccountRepository;
 import com.uit.accountservice.riskengine.RiskEngineService;
-import com.uit.accountservice.riskengine.dto.RiskAssessmentRequest;
 import com.uit.accountservice.riskengine.dto.RiskAssessmentResponse;
 import com.uit.sharedkernel.exception.AppException;
 import com.uit.sharedkernel.exception.ErrorCode;
@@ -27,7 +27,6 @@ import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -149,8 +148,8 @@ class AccountServiceTest {
     @DisplayName("handleTransfer throws FORBIDDEN when user does not own source account")
     void testHandleTransfer_ThrowsForbidden_WhenUserDoesNotOwnAccount() {
         TransferRequest request = new TransferRequest();
-        request.setFromAccountId("acc-123");
-        request.setToAccountId("acc-456");
+        request.setSenderAccountId("acc-123");
+        request.setReceiverAccountId("acc-456");
         request.setAmount(BigDecimal.valueOf(100.00));
 
         when(accountRepository.findById("acc-123")).thenReturn(Optional.of(aliceAccount));
@@ -167,8 +166,8 @@ class AccountServiceTest {
     @DisplayName("handleTransfer throws INSUFFICIENT_FUNDS")
     void testHandleTransfer_ThrowsInsufficientFunds() {
         TransferRequest request = new TransferRequest();
-        request.setFromAccountId("acc-123");
-        request.setToAccountId("acc-456");
+        request.setSenderAccountId("acc-123");
+        request.setReceiverAccountId("acc-456");
         request.setAmount(BigDecimal.valueOf(5000.00)); // > 1000 balance
 
         when(accountRepository.findById("acc-123")).thenReturn(Optional.of(aliceAccount));
@@ -183,8 +182,8 @@ class AccountServiceTest {
     @DisplayName("handleTransfer executes immediately when risk is LOW")
     void testHandleTransfer_ExecutesImmediately_WhenLowRisk() {
         TransferRequest request = new TransferRequest();
-        request.setFromAccountId("acc-123");
-        request.setToAccountId("acc-456");
+        request.setSenderAccountId("acc-123");
+        request.setReceiverAccountId("acc-456");
         request.setAmount(BigDecimal.valueOf(100.00));
 
         when(accountRepository.findById("acc-123")).thenReturn(Optional.of(aliceAccount));
@@ -201,15 +200,15 @@ class AccountServiceTest {
 
         assertThat(result).isInstanceOf(AccountDto.class);
         verify(accountRepository, times(2)).save(any()); // Saves both accounts
-        verify(auditService).logTransfer(eq("alice"), any(), any(), any(), eq(com.uit.accountservice.entity.TransferStatus.COMPLETED), any(), any(), any(), any(), any(), any());
+        verify(auditService).logTransfer(eq("alice"), any(), any(), any(), eq(TransferStatus.COMPLETED), any(), any(), any(), any(), any(), any());
     }
 
     @Test
     @DisplayName("handleTransfer returns Challenge when risk is MEDIUM")
     void testHandleTransfer_ReturnsChallenge_WhenMediumRisk() {
         TransferRequest request = new TransferRequest();
-        request.setFromAccountId("acc-123");
-        request.setToAccountId("acc-456");
+        request.setSenderAccountId("acc-123");
+        request.setReceiverAccountId("acc-456");
         request.setAmount(BigDecimal.valueOf(100.00));
 
         when(accountRepository.findById("acc-123")).thenReturn(Optional.of(aliceAccount));
@@ -238,7 +237,7 @@ class AccountServiceTest {
         assertThat(response.getChallengeType()).isEqualTo("SMS_OTP");
         
         verify(valueOperations).set(startsWith("transfer:"), any(PendingTransfer.class), eq(5L), eq(TimeUnit.MINUTES));
-        verify(auditService).logTransfer(eq("alice"), any(), any(), any(), eq(com.uit.accountservice.entity.TransferStatus.PENDING), any(), any(), any(), any(), any(), any());
+        verify(auditService).logTransfer(eq("alice"), any(), any(), any(), eq(TransferStatus.PENDING), any(), any(), any(), any(), any(), any());
     }
     
     @Test
@@ -264,8 +263,8 @@ class AccountServiceTest {
         request.setOtpCode("wrong-code");
         
         TransferRequest transferRequest = new TransferRequest();
-        transferRequest.setFromAccountId("acc-123");
-        transferRequest.setToAccountId("acc-456");
+        transferRequest.setSenderAccountId("acc-123");
+        transferRequest.setReceiverAccountId("acc-456");
         transferRequest.setAmount(BigDecimal.valueOf(100.00));
         
         PendingTransfer pending = new PendingTransfer(
@@ -287,8 +286,8 @@ class AccountServiceTest {
         verifyRequest.setOtpCode("123456");
         
         TransferRequest transferRequest = new TransferRequest();
-        transferRequest.setFromAccountId("acc-123");
-        transferRequest.setToAccountId("acc-456");
+        transferRequest.setSenderAccountId("acc-123");
+        transferRequest.setReceiverAccountId("acc-456");
         transferRequest.setAmount(BigDecimal.valueOf(100.00));
         
         PendingTransfer pending = new PendingTransfer(

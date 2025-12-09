@@ -7,10 +7,30 @@ services:
       POSTGRES_PASSWORD: 123456
       POSTGRES_DB: userdb
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       # This 'userdb_data' is defined in docker-compose.base.yml
       - userdb_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -h localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  account-service-db:
+    image: postgres:16-alpine
+    container_name: account-service-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: accountdb
+    ports:
+      - "5434:5432"
+    volumes:
+      # This 'accountdb_data' is defined in docker-compose.base.yml
+      - accountdb_data:/var/lib/postgresql/data
     networks:
       - internal
     healthcheck:
@@ -26,10 +46,12 @@ services:
       POSTGRES_USER: keycloak
       POSTGRES_PASSWORD: password
       POSTGRES_DB: keycloak
-    tmpfs:
-      # IMPORTANT: You MUST run 'docker compose down' to destroy
-      # the container and clear this data for a fresh import.
-      - /var/lib/postgresql/data
+    # tmpfs:
+    # IMPORTANT: You MUST run 'docker compose down' to destroy
+    # the container and clear this data for a fresh import.
+    #  - /var/lib/postgresql/data
+    volumes:
+      - keycloak_db_data:/var/lib/postgresql/data
     networks:
       - internal
     healthcheck:
@@ -42,7 +64,6 @@ services:
     image: redis:6
     container_name: fortressbank-redis
     volumes:
-      # This 'redis_data' is defined in docker-compose.base.yml
       - redis_data:/data
     ports:
       - "6379:6379"
@@ -54,18 +75,38 @@ services:
       timeout: 5s
       retries: 5
 
-  reference-service-db:
+  # reference-service-db:
+  #   image: postgres:16-alpine
+  #   container_name: reference-service-db
+  #   environment:
+  #     POSTGRES_USER: postgres
+  #     POSTGRES_PASSWORD: 123456
+  #     POSTGRES_DB: referencedb
+  #   ports:
+  #     - "5003:5432"
+  #   volumes:
+  #     # This 'referencedb_data' is defined in docker-compose.base.yml
+  #     - referencedb_data:/var/lib/postgresql/data
+  #   networks:
+  #     - internal
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U postgres -h localhost"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+  transaction-service-db:
     image: postgres:16-alpine
-    container_name: reference-service-db
+    container_name: transaction-service-db
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: 123456
-      POSTGRES_DB: referencedb
+      POSTGRES_DB: transactiondb
     ports:
-      - "5003:5432"
+      - "5435:5432"
     volumes:
-      # This 'referencedb_data' is defined in docker-compose.base.yml
-      - referencedb_data:/var/lib/postgresql/data
+      # This 'transactiondb_data' is defined in docker-compose.base.yml
+      - transactiondb_data:/var/lib/postgresql/data
     networks:
       - internal
     healthcheck:
@@ -103,6 +144,23 @@ services:
         condition: service_healthy
     networks:
       - internal
+
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: fortress-rabbitmq
+    ports:
+      - "5672:5672" # Application port
+      - "15672:15672" # Management UI port
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   kong:
     build:

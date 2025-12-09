@@ -52,6 +52,7 @@ services:
       SPRING_PROFILES_ACTIVE: docker
       SERVER_PORT: 4000
       SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+      JWT_ISSUER_URI: http://keycloak:8080/realms/fortressbank-realm
     depends_on:
       discovery:
         condition: service_healthy
@@ -75,13 +76,14 @@ services:
         - MAVEN_OPTS=-Xmx512m
     container_name: account-service
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://user-service-db:5432/userdb
+      SPRING_DATASOURCE_URL: jdbc:postgresql://account-service-db:5432/accountdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: 123456
       SPRING_PROFILES_ACTIVE: docker
       SERVER_PORT: 4001
       SPRING_REDIS_HOST: redis
       SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+      JWT_ISSUER_URI: http://keycloak:8080/realms/fortressbank-realm
     depends_on:
       discovery:
         condition: service_healthy
@@ -120,53 +122,115 @@ services:
     networks:
       - internal
 
-  risk-engine:
-    build:
-      context: .
-      dockerfile: risk-engine/Dockerfile
-      target: risk-engine
-      args:
-        - MAVEN_OPTS=-Xmx512m
-    container_name: risk-engine
-    environment:
-      SPRING_PROFILES_ACTIVE: docker
-      SERVER_PORT: 6000
-      SPRING_CLOUD_CONFIG_URI: http://config-server:8888
-    depends_on:
-      keycloak:
-        condition: service_healthy
-      config-server:
-        condition: service_healthy
-      discovery:
-        condition: service_healthy
-    ports:
-      - "6000:6000"
-    networks:
-      - internal
-
-  reference-service:
+  transaction-service:
     build:
       context: .
       dockerfile: Dockerfile.services
-      target: reference-service
+      target: transaction-service
       args:
         - MAVEN_OPTS=-Xmx512m
-    container_name: reference-service
+    container_name: transaction-service
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://reference-service-db:5432/referencedb
+      SPRING_DATASOURCE_URL: jdbc:postgresql://transaction-service-db:5432/transactiondb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: 123456
       SPRING_PROFILES_ACTIVE: docker
-      SERVER_PORT: 4003
+      SERVER_PORT: 4004
       SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_ISSUER_URI: http://keycloak:8080/realms/fortressbank-realm
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
     depends_on:
       discovery:
         condition: service_healthy
-      reference-service-db:
+      transaction-service-db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
       config-server:
         condition: service_started
     ports:
-      - "4003:4003"
+      - "4004:4004"
     networks:
       - internal
+
+  # risk-engine:
+  #   build:
+  #     context: .
+  #     dockerfile: risk-engine/Dockerfile
+  #     target: risk-engine
+  #     args:
+  #       - MAVEN_OPTS=-Xmx512m
+  #   container_name: risk-engine
+  #   environment:
+  #     SPRING_PROFILES_ACTIVE: docker
+  #     SERVER_PORT: 6000
+  #     SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+  #   depends_on:
+  #     keycloak:
+  #       condition: service_healthy
+  #     config-server:
+  #       condition: service_healthy
+  #     discovery:
+  #       condition: service_healthy
+  #   ports:
+  #     - "6000:6000"
+  #   networks:
+  #     - internal
+
+  # external-bank-mock:
+  #   build:
+  #     context: ./external-bank-mock
+  #     dockerfile: Dockerfile
+  #   container_name: external-bank-mock
+  #   environment:
+  #     SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/external-bank-db
+  #     SPRING_DATASOURCE_USERNAME: postgres
+  #     SPRING_DATASOURCE_PASSWORD: postgres
+  #     SPRING_RABBITMQ_HOST: rabbitmq
+  #     SPRING_RABBITMQ_PORT: 5672
+  #     SPRING_RABBITMQ_USERNAME: guest
+  #     SPRING_RABBITMQ_PASSWORD: guest
+  #     SERVER_PORT: 5000
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     rabbitmq:
+  #       condition: service_healthy
+  #   ports:
+  #     - "5000:5000"
+  #   networks:
+  #     - internal
+
+  # reference-service:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.services
+  #     target: reference-service
+  #     args:
+  #       - MAVEN_OPTS=-Xmx512m
+  #   container_name: reference-service
+  #   environment:
+  #     SPRING_DATASOURCE_URL: jdbc:postgresql://reference-service-db:5432/referencedb
+  #     SPRING_DATASOURCE_USERNAME: postgres
+  #     SPRING_DATASOURCE_PASSWORD: 123456
+  #     SPRING_PROFILES_ACTIVE: docker
+  #     SERVER_PORT: 4003
+  #     SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+  #   depends_on:
+  #     discovery:
+  #       condition: service_healthy
+  #     reference-service-db:
+  #       condition: service_healthy
+  #     config-server:
+  #       condition: service_started
+  #   ports:
+  #     - "4003:4003"
+  #   networks:
+  #     - internal

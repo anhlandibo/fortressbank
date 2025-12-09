@@ -44,8 +44,8 @@ class TransferEndpointTest {
     @DisplayName("processTransfer() returns COMPLETED for low risk")
     void testProcessTransfer_Completed() {
         TransferEndpoint.TransferRequestType requestType = new TransferEndpoint.TransferRequestType();
-        requestType.setFromAccountId("acc1");
-        requestType.setToAccountId("acc2");
+        requestType.setSenderAccountId("acc1");
+        requestType.setReceiverAccountId("acc2");
         requestType.setAmount(BigDecimal.TEN);
         
         JAXBElement<TransferEndpoint.TransferRequestType> request = new JAXBElement<>(
@@ -68,8 +68,8 @@ class TransferEndpointTest {
     @DisplayName("processTransfer() returns CHALLENGE_REQUIRED for medium risk")
     void testProcessTransfer_ChallengeRequired() {
         TransferEndpoint.TransferRequestType requestType = new TransferEndpoint.TransferRequestType();
-        requestType.setFromAccountId("acc1");
-        requestType.setToAccountId("acc2");
+        requestType.setSenderAccountId("acc1");
+        requestType.setReceiverAccountId("acc2");
         requestType.setAmount(BigDecimal.TEN);
         
         JAXBElement<TransferEndpoint.TransferRequestType> request = new JAXBElement<>(

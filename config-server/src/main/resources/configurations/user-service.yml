@@ -7,18 +7,29 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://keycloak:8080/realms/fortressbank-realm
-          
+          jwk-set-uri: http://keycloak:8080/realms/fortressbank-realm/protocol/openid-connect/certs
+
   datasource:
-    url: ${SPRING_DATASOURCE_URL}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://user-service-db:5432/userdb}
     username: ${SPRING_DATASOURCE_USERNAME}
     password: ${SPRING_DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
 
   jpa:
+    show-sql: false
     hibernate:
-      ddl-auto: update
-    show-sql: true
+      ddl-auto: validate
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
+
+# Eureka Configuration
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: ${EUREKA_DEFAULT_ZONE:http://discovery:8761/eureka}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    preferIpAddress: true
+    instance-id: ${spring.application.name}:${random.value}

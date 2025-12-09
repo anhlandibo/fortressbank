@@ -1,0 +1,53 @@
+server:
+  port: ${SERVER_PORT:4001}
+
+spring:
+  application:
+    name: account-service
+
+  datasource:
+    url: jdbc:postgresql://localhost:5434/accountdb
+    username: postgres
+    password: 123456
+    driver-class-name: org.postgresql.Driver
+
+  data:
+    redis:
+      host: ${SPRING_REDIS_HOST:redis}
+      port: 6379
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+    baseline-version: 0
+
+  sql:
+    init:
+      mode: never
+
+  cloud:
+    config:
+      enabled: false # Disable config server for dev profile
+
+# JWT Configuration
+jwt:
+  issuer-uri: http://localhost:8888/realms/fortressbank-realm
+
+# Eureka Configuration
+eureka:
+  client:
+    enabled: false # Disable eureka for dev profile
+
+# Logging
+logging:
+  level:
+    com.uit.accountservice: DEBUG

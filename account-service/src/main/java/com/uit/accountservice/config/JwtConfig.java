@@ -21,7 +21,7 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 @Configuration
 public class JwtConfig {
 
-    @Value("${jwt.issuer-uri:http://localhost:8888/realms/fortressbank-realm}")
+    @Value("${jwt.issuer-uri}")
     private String issuerUri;
 
     /**
@@ -40,6 +40,7 @@ public class JwtConfig {
         // - Signature verification
         // - Token expiration validation
         // - Issuer validation
-        return NimbusJwtDecoder.withIssuerLocation(issuerUri).build();
+        String jwkSetUri = issuerUri + "/protocol/openid-connect/certs";
+        return NimbusJwtDecoder.withJwkSetUri(issuerUri).build();
     }
 }
