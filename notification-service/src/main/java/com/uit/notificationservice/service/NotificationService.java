@@ -1,6 +1,7 @@
 package com.uit.notificationservice.service;
 
 import com.google.firebase.messaging.FirebaseMessagingException;
+import com.uit.notificationservice.dto.EmailNotificationRequest;
 import com.uit.notificationservice.dto.SendNotificationRequest;
 import com.uit.notificationservice.dto.TextBeeRequest;
 import com.uit.notificationservice.entity.NotificationMessage;
@@ -11,9 +12,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 
 @Service
 @Slf4j
@@ -23,11 +24,12 @@ public class NotificationService {
     private final WebClient.Builder webClientBuilder;
     private final NotificationRepo notificationRepo;
     private final FirebaseMessagingService firebaseMessagingService;
+    private final EmailService emailService;
 
-    @Value("${textbee.api.key}" )
+    @Value("${textbee.api.key}")
     private String apiKey;
 
-    @Value("${textbee.device.id}" )
+    @Value("${textbee.device.id}")
     private String deviceId;
 
     public void sendSmsOtp(String phoneNumber, String otpCode) {
@@ -48,8 +50,140 @@ public class NotificationService {
                 );
     }
 
-    public List<NotificationMessage> getNotifications() {
-        return notificationRepo.findAll();
+        public List<NotificationMessage> getNotifications() {
+            return notificationRepo.findAll();
+        }
+
+    /**
+     * Send push notification via Firebase Cloud Messaging
+     */
+    /**
+     * Send push notification via Firebase Cloud Messaging (single device)
+     */
+    public void sendPushNotification(String deviceToken, String title, String body) {
+        try {
+            log.info("Sending push notification to token: {}", deviceToken);
+            
+            SendNotificationRequest request = SendNotificationRequest.builder()
+                    .deviceToken(deviceToken)
+                    .title(title)
+                    .content(body)
+                    .type("NOTIFICATION")
+                    .build();
+            
+            List<String> tokens = new ArrayList<>();
+            tokens.add(deviceToken);
+            
+            firebaseMessagingService.sendNotification(tokens, request);
+            log.info("Push notification sent successfully");
+            
+        } catch (Exception e) {
+            log.error("Failed to send push notification: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Send transaction notification to multiple devices with database persistence
+     * Modern banking approach: Use push notifications instead of SMS
+     */
+    public void sendTransactionNotification(String userId, List<String> deviceTokens, 
+                                           String title, String content) {
+        try {
+            log.info("Sending transaction notification to user: {} on {} devices", userId, deviceTokens.size());
+            
+            // Create and save notification to database for each device
+            for (String deviceToken : deviceTokens) {
+                NotificationMessage notification = NotificationMessage.builder()
+                        .userId(userId)
+                        .title(title)
+                        .content(content)
+                        .type("TRANSACTION")
+                        .deviceToken(deviceToken)
+                        .isRead(false)
+                        .sentAt(new Date())
+                        .createdAt(new Date())
+                        .build();
+                
+                notificationRepo.save(notification);
+                log.debug("Transaction notification saved to database for user: {}", userId);
+            }
+            
+            // Send push notification via Firebase
+            SendNotificationRequest request = SendNotificationRequest.builder()
+                    .userId(userId)
+                    .title(title)
+                    .content(content)
+                    .type("TRANSACTION")
+                    .isRead(false)
+                    .sentAt(new Date())
+                    .build();
+            
+            firebaseMessagingService.sendNotification(deviceTokens, request);
+            log.info("Transaction notification sent successfully to {} devices", deviceTokens.size());
+            
+        } catch (Exception e) {
+            log.error("Failed to send transaction notification to user {}: {}", userId, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Send email notification with optional info and CTA
+     * 
+     * @param recipientEmail Recipient email address
+     * @param recipientName Recipient name (optional)
+     * @param title Email subject and main title
+     * @param content Main message content
+     */
+    public void sendEmailNotification(String recipientEmail, String recipientName, 
+                                      String title, String content) {
+        try {
+            log.info("Sending email notification to: {}", recipientEmail);
+            
+            EmailNotificationRequest request = EmailNotificationRequest.builder()
+                    .recipientEmail(recipientEmail)
+                    .recipientName(recipientName)
+                    .title(title)
+                    .content(content)
+                    .build();
+            
+            emailService.sendEmailNotification(request);
+            log.info("Email notification sent successfully to: {}", recipientEmail);
+            
+        } catch (Exception e) {
+            log.error("Failed to send email notification to {}: {}", recipientEmail, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Send transaction email notification with detailed info
+     * 
+     * @param recipientEmail Recipient email address
+     * @param title Email title
+     * @param content Main content
+     * @param badge Badge type (SUCCESS, FAILED, INFO)
+     * @param additionalInfo Additional transaction details
+     */
+    public void sendTransactionEmail(String recipientEmail, String title, String content,
+                                     String badge, List<EmailNotificationRequest.InfoRow> additionalInfo) {
+        try {
+            log.info("Sending transaction email to: {}", recipientEmail);
+            
+            EmailNotificationRequest request = EmailNotificationRequest.builder()
+                    .recipientEmail(recipientEmail)
+                    .title(title)
+                    .content(content)
+                    .badge(badge)
+                    .additionalInfo(additionalInfo)
+                    .ctaUrl("https://fortressbank.com/transactions") // Link to transaction history
+                    .ctaText("View Transaction History")
+                    .build();
+            
+            emailService.sendEmailNotification(request);
+            log.info("Transaction email sent successfully to: {}", recipientEmail);
+            
+        } catch (Exception e) {
+            log.error("Failed to send transaction email to {}: {}", recipientEmail, e.getMessage(), e);
+        }
     }
 
     public NotificationMessage createAndSendNotification(SendNotificationRequest request) throws FirebaseMessagingException {
@@ -65,19 +199,12 @@ public class NotificationService {
                 .createdAt(new Date())
                 .build();
 
+        List<String> tokens = new ArrayList<>();
+        tokens.add(request.getDeviceToken());
+
         notificationRepo.save(newNotification);
-        CompletableFuture.runAsync(() -> {
-            try {
-                firebaseMessagingService.sendNotification(newNotification);
-            } catch (FirebaseMessagingException e) {
-                e.printStackTrace();
-                // Optionally update notification status sent=false
-            }
-        });
+        firebaseMessagingService.sendNotification(tokens, request);
 
-//        firebaseMessagingService.sendNotification(newNotification);
-
-//        SendNotificationDto dto = No
         return newNotification;
     }
 }
