@@ -11,8 +11,8 @@ spring:
     password:
     driverClassName: org.h2.Driver
   rabbitmq:
-    host: localhost
-    port: 5672
+    host: ${RMQ_HOST:localhost}
+    port: ${RMQ_PORT:5672}
     username: guest
     password: guest
 
@@ -36,6 +36,23 @@ spring:
       path=/h2-console:
       enabled: true
 
+  # Mail configuration for email notifications
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username:
+    password:
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
   # Disable cloud config for tests
   cloud:
     config:
@@ -50,9 +67,14 @@ eureka:
 
 textbee:
   api:
-    key: "d0067ec4-9b8a-49c4-9295-e8120c19a162"
+    key: ${TEXTBEE_API_KEY:d0067ec4-9b8a-49c4-9295-e8120c19a162}
   device:
-    id: "68f1c11d6a418a16ec8f483e"
+    id: ${TEXTBEE_DEVICE_ID:68f1c11d6a418a16ec8f483e}
+
+# Email settings
+app:
+  email:
+    from-name: FortressBank
 
 logging:
   level:

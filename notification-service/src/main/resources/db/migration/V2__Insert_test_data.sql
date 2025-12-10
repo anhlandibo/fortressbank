@@ -4,7 +4,7 @@
 
 -- Test User 1: All notifications enabled (for comprehensive testing)
 INSERT INTO user_preference (user_id, phone_number, email, push_notification_enabled, sms_notification_enabled, email_notification_enabled)
-VALUES ('ACC001', '0857311444', 'user1@fortressbank.com', TRUE, TRUE, TRUE);
+VALUES ('ACC001', '0946942439', 'quangtienngo661@gmail.com', TRUE, TRUE, TRUE);
 
 -- Test User 2: Only push notifications enabled
 INSERT INTO user_preference (user_id, phone_number, email, push_notification_enabled, sms_notification_enabled, email_notification_enabled)

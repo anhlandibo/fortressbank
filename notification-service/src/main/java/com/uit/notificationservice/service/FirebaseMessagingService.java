@@ -7,11 +7,13 @@ import com.google.firebase.messaging.Notification;
 import com.uit.notificationservice.dto.SendNotificationRequest;
 import com.uit.notificationservice.entity.NotificationMessage;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class FirebaseMessagingService {
@@ -39,8 +41,9 @@ public class FirebaseMessagingService {
         CompletableFuture.runAsync(() -> {
             try {
                 firebaseMessaging.sendEach(messages);
+                log.info("Firebase messages sent successfully to {} devices", deviceTokens.size());
             } catch (FirebaseMessagingException e) {
-                e.printStackTrace();
+                log.error("Failed to send Firebase messages: {}", e.getMessage(), e);
             }
         });
     }

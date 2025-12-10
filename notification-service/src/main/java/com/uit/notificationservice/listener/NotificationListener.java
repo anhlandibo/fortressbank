@@ -1,22 +1,18 @@
 package com.uit.notificationservice.listener;
 
-import com.google.firebase.messaging.FirebaseMessagingException;
-import com.uit.notificationservice.dto.SendNotificationRequest;
+import com.uit.notificationservice.dto.EmailNotificationRequest;
 import com.uit.notificationservice.entity.UserPreference;
 import com.uit.notificationservice.repository.UserPreferenceRepo;
-import com.uit.notificationservice.service.FirebaseMessagingService;
 import com.uit.notificationservice.service.NotificationService;
 import com.uit.sharedkernel.constants.RabbitMQConstants;
-import com.uit.sharedkernel.exception.AppException;
-import com.uit.sharedkernel.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
-import java.util.Date;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -24,7 +20,6 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class NotificationListener {
     private final NotificationService notificationService;
-    private final FirebaseMessagingService firebaseMessagingService;
     private final UserPreferenceRepo userPreferenceRepo;
 
     /**
@@ -66,13 +61,13 @@ public class NotificationListener {
         log.info("Received transaction notification event: {}", message);
 
         try {
-            // Extract transaction details from message payload
+            // Extract transaction details from message payload (matching transaction-service sender)
             String transactionId = (String) message.get("transactionId");
             String senderAccountId = (String) message.get("senderAccountId");
             String receiverAccountId = (String) message.get("receiverAccountId");
             Object amountObj = message.get("amount");
             String status = (String) message.get("status");
-            Boolean success = (Boolean) message.get("success");
+            boolean success = Boolean.TRUE.equals(message.get("success")); // Safe unboxing
             String notificationMessage = (String) message.get("message");
             String timestamp = (String) message.get("timestamp");
 
@@ -82,56 +77,51 @@ public class NotificationListener {
                 amount = new BigDecimal(amountObj.toString());
             }
 
-            log.info("Processing transaction notification - ID: {}, Status: {}, Success: {}", 
-                    transactionId, status, success);
+            log.info("Processing transaction notification - TxID: {}, SenderAccount: {}, ReceiverAccount: {}, Status: {}, Success: {}",
+                    transactionId, senderAccountId, receiverAccountId, status, success);
 
-            // Get user preferences for sender account (primary notification recipient)
+            // ========== SENDER NOTIFICATION (Money Deducted) ==========
+            log.info("Processing sender notification for account: {}", senderAccountId);
+            
             UserPreference senderPreference = userPreferenceRepo.findById(senderAccountId)
                     .orElseGet(() -> {
-                        log.warn("User preference not found for sender: {}, using defaults", senderAccountId);
+                        log.warn("User preference not found for sender account: {}, using defaults", senderAccountId);
                         return createDefaultPreference(senderAccountId);
                     });
 
-            // Build notification title and content
-            String title = success ? "Transaction Successful" : "Transaction Failed";
-            String content = formatTransactionNotification(success, amount, status, notificationMessage);
+            // Build sender notification (money deducted)
+            String senderTitle = success ? "Money Sent Successfully" : "Transaction Failed";
+            String senderContent = formatSenderNotification(success, amount, receiverAccountId, status, notificationMessage);
 
-            // Send Push Notification (if enabled and device tokens exist)
-            // Modern banking trend: Use push notifications instead of SMS for transaction alerts
-            // Benefits: Free, real-time, rich content, no SMS costs
-            if (senderPreference.isPushNotificationEnabled() && 
-                senderPreference.getDeviceTokens() != null && 
-                !senderPreference.getDeviceTokens().isEmpty()) {
+            // Send Push Notification to Sender
+            sendPushNotification(senderAccountId, senderPreference, transactionId, senderTitle, senderContent);
+            
+            // Send Email Notification to Sender
+            sendEmailNotification(senderAccountId, senderPreference, transactionId, senderTitle, 
+                                 senderContent, status, amount, success, "Recipient", receiverAccountId);
+
+            // ========== RECEIVER NOTIFICATION (Money Received) ==========
+            // Only send to receiver if transaction is successful
+            if (success) {
+                log.info("Processing receiver notification for account: {}", receiverAccountId);
                 
-                try {
-                    SendNotificationRequest pushRequest = new SendNotificationRequest(
-                            senderAccountId,
-                            title,
-                            content,
-                            null, // image
-                            "TRANSACTION",
-                            false, // isRead
-                            new Date()
-                    );
+                UserPreference receiverPreference = userPreferenceRepo.findById(receiverAccountId)
+                        .orElseGet(() -> {
+                            log.warn("User preference not found for receiver account: {}, using defaults", receiverAccountId);
+                            return createDefaultPreference(receiverAccountId);
+                        });
 
-                    firebaseMessagingService.sendNotification(
-                            senderPreference.getDeviceTokens(), 
-                            pushRequest
-                    );
-                    log.info("Push notification sent for transaction: {} to {} devices", 
-                            transactionId, senderPreference.getDeviceTokens().size());
-                } catch (Exception e) {
-                    log.error("Failed to send push notification for transaction {}: {}", 
-                            transactionId, e.getMessage());
-                }
-            } else {
-                log.info("Push notification not sent for transaction: {} - " +
-                        "Push disabled or no device tokens registered", transactionId);
+                // Build receiver notification (money received)
+                String receiverTitle = "Money Received";
+                String receiverContent = formatReceiverNotification(amount, senderAccountId);
+
+                // Send Push Notification to Receiver
+                sendPushNotification(receiverAccountId, receiverPreference, transactionId, receiverTitle, receiverContent);
+                
+                // Send Email Notification to Receiver
+                sendEmailNotification(receiverAccountId, receiverPreference, transactionId, receiverTitle, 
+                                     receiverContent, status, amount, true, "Sender", senderAccountId);
             }
-
-            // Note: SMS and Email notifications removed for transaction alerts
-            // SMS is only used for critical OTP verification (security requirement)
-            // Email notifications can be added later for monthly statements/reports
 
             log.info("Transaction notification processing completed for: {}", transactionId);
 
@@ -142,28 +132,150 @@ public class NotificationListener {
     }
 
     /**
-     * Format transaction notification message
+     * Format sender notification message (money deducted)
      */
-    private String formatTransactionNotification(Boolean success, BigDecimal amount, 
-                                                  String status, String message) {
+    private String formatSenderNotification(boolean success, BigDecimal amount,
+                                           String receiverAccountId, String status, String message) {
         StringBuilder sb = new StringBuilder();
-        
+
+        if (success) {
+            sb.append("You have successfully sent money.\n");
+            if (amount != null) {
+                sb.append("Amount: -").append(amount).append(" VND\n");
+            }
+            sb.append("To: ").append(receiverAccountId).append("\n");
+        } else {
+            sb.append("Your transaction has failed.\n");
+            if (amount != null) {
+                sb.append("Amount: ").append(amount).append(" VND\n");
+            }
+        }
+
+        sb.append("Status: ").append(status).append("\n");
+
+        if (message != null && !message.isEmpty()) {
+            sb.append("Details: ").append(message);
+        }
+
+        return sb.toString();
+    }
+
+    /**
+     * Format receiver notification message (money received)
+     */
+    private String formatReceiverNotification(BigDecimal amount, String senderAccountId) {
+        StringBuilder sb = new StringBuilder();
+
+        sb.append("You have received money!\n");
+        if (amount != null) {
+            sb.append("Amount: +").append(amount).append(" VND\n");
+        }
+        sb.append("From: ").append(senderAccountId).append("\n");
+        sb.append("Status: COMPLETED\n");
+
+        return sb.toString();
+    }
+
+    /**
+     * Send push notification to user
+     */
+    private void sendPushNotification(String userId, UserPreference userPreference, 
+                                     String transactionId, String title, String content) {
+        if (userPreference.isPushNotificationEnabled() &&
+                userPreference.getDeviceTokens() != null &&
+                !userPreference.getDeviceTokens().isEmpty()) {
+
+            try {
+                notificationService.sendTransactionNotification(
+                        userId,
+                        userPreference.getDeviceTokens(),
+                        title,
+                        content
+                );
+                log.info("Push notification sent for transaction: {} to user: {} ({} devices)",
+                        transactionId, userId, userPreference.getDeviceTokens().size());
+            } catch (Exception e) {
+                log.error("Failed to send push notification for transaction {} to user {}: {}",
+                        transactionId, userId, e.getMessage());
+            }
+        } else {
+            log.info("Push notification not sent for user: {} - disabled or no device tokens", userId);
+        }
+    }
+
+    /**
+     * Send email notification to user
+     */
+    private void sendEmailNotification(String userId, UserPreference userPreference, 
+                                       String transactionId, String title, String content,
+                                       String status, BigDecimal amount, boolean success,
+                                       String counterPartyLabel, String counterPartyAccountId) {
+        if (userPreference.isEmailNotificationEnabled() &&
+                userPreference.getEmail() != null &&
+                !userPreference.getEmail().isEmpty()) {
+            
+            try {
+                // Build additional info for email
+                List<EmailNotificationRequest.InfoRow> additionalInfo = new ArrayList<>();
+                additionalInfo.add(EmailNotificationRequest.InfoRow.builder()
+                        .label("Transaction ID: ")
+                        .value(transactionId.substring(0, Math.min(16, transactionId.length())))
+                        .build());
+                additionalInfo.add(EmailNotificationRequest.InfoRow.builder()
+                        .label("Amount: ")
+                        .value(amount != null ? amount.toString() + " VND" : "N/A")
+                        .build());
+                additionalInfo.add(EmailNotificationRequest.InfoRow.builder()
+                        .label(counterPartyLabel + ": ")
+                        .value(counterPartyAccountId)
+                        .build());
+                additionalInfo.add(EmailNotificationRequest.InfoRow.builder()
+                        .label("Status: ")
+                        .value(status)
+                        .build());
+                
+                String badge = success ? "SUCCESS" : "FAILED";
+                
+                notificationService.sendTransactionEmail(
+                        userPreference.getEmail(),
+                        title,
+                        content,
+                        badge,
+                        additionalInfo
+                );
+                
+                log.info("Email notification sent for transaction: {} to user: {} ({})",
+                        transactionId, userId, userPreference.getEmail());
+            } catch (Exception e) {
+                log.error("Failed to send email notification for transaction {} to user {}: {}",
+                        transactionId, userId, e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Format transaction notification message (legacy - kept for compatibility)
+     */
+    private String formatTransactionNotification(boolean success, BigDecimal amount,
+                                                 String status, String message) {
+        StringBuilder sb = new StringBuilder();
+
         if (success) {
             sb.append("Your transaction has been completed successfully.\n");
         } else {
             sb.append("Your transaction has failed.\n");
         }
-        
+
         if (amount != null) {
             sb.append("Amount: ").append(amount).append("\n");
         }
-        
+
         sb.append("Status: ").append(status).append("\n");
-        
+
         if (message != null && !message.isEmpty()) {
             sb.append("Details: ").append(message);
         }
-        
+
         return sb.toString();
     }
 
@@ -173,13 +285,13 @@ public class NotificationListener {
      */
     private UserPreference createDefaultPreference(String userId) {
         log.info("Creating and saving default preference for user: {}", userId);
-        
+
         UserPreference defaultPref = new UserPreference();
         defaultPref.setUserId(userId);
         defaultPref.setPushNotificationEnabled(true);
         defaultPref.setSmsNotificationEnabled(false);
         defaultPref.setEmailNotificationEnabled(false);
-        
+
         // Save to database so it persists
         return userPreferenceRepo.save(defaultPref);
     }
