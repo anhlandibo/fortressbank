@@ -88,7 +88,7 @@ public class ExternalBankService {
      * Background job: Process pending transfers asynchronously.
      * Runs every 10 seconds to simulate external bank processing.
      */
-    @Scheduled(fixedDelay = 10000, initialDelay = 5000)
+    // @Scheduled(fixedDelay = 10000, initialDelay = 5000)
     @Transactional
     public void processPendingTransfers() {
         List<ExternalTransfer> pendingTransfers = transferRepository.findByStatus(TransferStatus.PENDING);

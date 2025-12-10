@@ -159,6 +159,37 @@ services:
     networks:
       - internal
 
+  audit-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.services
+      target: audit-service
+      args:
+        - MAVEN_OPTS=-Xmx512m
+    container_name: audit-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://audit-service-db:5432/auditdb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: 123456
+      SPRING_PROFILES_ACTIVE: docker
+      SERVER_PORT: 4005
+      SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+    depends_on:
+      discovery:
+        condition: service_healthy
+      audit-service-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      config-server:
+        condition: service_started
+    ports:
+      - "4005:4005"
+    networks:
+      - internal
+
   # risk-engine:
   #   build:
   #     context: .

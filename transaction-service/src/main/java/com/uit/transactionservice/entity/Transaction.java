@@ -71,6 +71,44 @@ public class Transaction {
     @Column(name = "destination_bank_code", length = 50)
     private String destinationBankCode;
 
+    // ========== Stripe Payment Gateway Fields ==========
+    
+    /**
+     * Stripe payout ID returned from Stripe API
+     */
+    @Column(name = "stripe_payout_id", length = 100)
+    private String stripePayoutId;
+
+    /**
+     * Current status of Stripe payout: pending, in_transit, paid, failed, canceled
+     */
+    @Column(name = "stripe_payout_status", length = 50)
+    private String stripePayoutStatus;
+
+    /**
+     * Stripe failure code if payout failed
+     */
+    @Column(name = "stripe_failure_code", length = 100)
+    private String stripeFailureCode;
+
+    /**
+     * Stripe failure message if payout failed
+     */
+    @Column(name = "stripe_failure_message", columnDefinition = "TEXT")
+    private String stripeFailureMessage;
+
+    /**
+     * Timestamp when webhook was received from Stripe
+     */
+    @Column(name = "webhook_received_at")
+    private LocalDateTime webhookReceivedAt;
+
+    /**
+     * Idempotency key for duplicate webhook prevention
+     */
+    @Column(name = "idempotency_key", unique = true, length = 100)
+    private String idempotencyKey;
+
     // ========== Saga Orchestration Fields ==========
     
     /**

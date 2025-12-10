@@ -176,6 +176,54 @@ public class AccountServiceClient {
     }
 
     /**
+     * Check if account exists in the database
+     * Returns true if account exists, false otherwise
+     * Uses GET /accounts/{accountId} endpoint - returns 200 if exists, 404 if not
+     */
+    public boolean checkAccountExists(String accountId) {
+        String url = accountServiceUrl + "/accounts/" + accountId;
+        
+        log.info("Checking if account exists - AccountID: {}", accountId);
+
+        try {
+            ResponseEntity<String> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    null,
+                    String.class
+            );
+
+            if (response.getStatusCode().is2xxSuccessful()) {
+                log.info("Account {} exists in database", accountId);
+                return true;
+            } else {
+                log.warn("Unexpected response when checking account existence: {}", response.getStatusCode());
+                return false;
+            }
+
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
+                log.info("Account {} not found in database", accountId);
+                return false;
+            }
+            log.error("Client error while checking account existence: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
+            throw new AccountServiceException("Failed to check account existence: " + e.getMessage(), e);
+
+        } catch (HttpServerErrorException e) {
+            log.error("Server error from account service: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
+            throw new AccountServiceException("Account service is temporarily unavailable", e);
+
+        } catch (ResourceAccessException e) {
+            log.error("Timeout or connection error while calling account service", e);
+            throw new AccountServiceException("Cannot connect to account service - timeout", e);
+
+        } catch (Exception e) {
+            log.error("Unexpected error while checking account existence", e);
+            throw new AccountServiceException("Unexpected error: " + e.getMessage(), e);
+        }
+    }
+
+    /**
      * Execute internal transfer atomically (RECOMMENDED).
      * Both debit and credit happen in a single database transaction.
      * Either both succeed or both fail - no partial state.

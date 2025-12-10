@@ -6,6 +6,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
@@ -25,14 +26,14 @@ public interface TransactionRepository extends JpaRepository<Transaction, java.u
     List<Transaction> findByCreatedAtBetween(LocalDateTime start, LocalDateTime end);
 
     @Query("SELECT t FROM Transaction t WHERE t.senderAccountId = :accountId OR t.receiverAccountId = :accountId")
-    Page<Transaction> findByAccountId(String accountId, Pageable pageable);
+    Page<Transaction> findByAccountId(@Param("accountId") String accountId, Pageable pageable);
 
     @Query(value = "SELECT COALESCE(SUM(amount + fee_amount), 0) FROM transactions " +
            "WHERE sender_account_id = :accountId " +
            "AND DATE(created_at) = CURRENT_DATE " +
            "AND status IN ('COMPLETED', 'PROCESSING')",
            nativeQuery = true)
-    BigDecimal calculateDailyUsed(String accountId);
+    BigDecimal calculateDailyUsed(@Param("accountId") String accountId);
 
     @Query(value = "SELECT COALESCE(SUM(amount + fee_amount), 0) FROM transactions " +
            "WHERE sender_account_id = :accountId " +
@@ -40,5 +41,16 @@ public interface TransactionRepository extends JpaRepository<Transaction, java.u
            "AND EXTRACT(MONTH FROM created_at) = EXTRACT(MONTH FROM CURRENT_DATE) " +
            "AND status IN ('COMPLETED', 'PROCESSING')",
            nativeQuery = true)
-    BigDecimal calculateMonthlyUsed(String accountId);
+    BigDecimal calculateMonthlyUsed(@Param("accountId") String accountId);
+
+    /**
+     * Find transactions stuck in EXTERNAL_INITIATED status for webhook timeout detection
+     * Used by StripeWebhookTimeoutJob to poll Stripe API
+     */
+    @Query("SELECT t FROM Transaction t WHERE t.status = :status AND t.currentStep = :step AND t.createdAt < :createdBefore")
+    List<Transaction> findByStatusAndCurrentStepAndCreatedAtBefore(
+            @Param("status") TransactionStatus status,
+            @Param("step") com.uit.transactionservice.entity.SagaStep step,
+            @Param("createdBefore") LocalDateTime createdBefore
+    );
 }

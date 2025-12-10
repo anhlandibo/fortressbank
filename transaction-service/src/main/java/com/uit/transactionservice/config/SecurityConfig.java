@@ -18,13 +18,13 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @EnableMethodSecurity(prePostEnabled = true)
 public class SecurityConfig implements WebMvcConfigurer {
     
-    private final ParseUserInfoFilter parseUserInfoFilter;
-    private final RoleCheckInterceptor roleCheckInterceptor;
+    // private final ParseUserInfoFilter parseUserInfoFilter;
+    // private final RoleCheckInterceptor roleCheckInterceptor;
     
-    public SecurityConfig(ParseUserInfoFilter parseUserInfoFilter, RoleCheckInterceptor roleCheckInterceptor) {
-        this.parseUserInfoFilter = parseUserInfoFilter;
-        this.roleCheckInterceptor = roleCheckInterceptor;
-    }
+    // public SecurityConfig(ParseUserInfoFilter parseUserInfoFilter, RoleCheckInterceptor roleCheckInterceptor) {
+    //     this.parseUserInfoFilter = parseUserInfoFilter;
+    //     this.roleCheckInterceptor = roleCheckInterceptor;
+    // }
     
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {

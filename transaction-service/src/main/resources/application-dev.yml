@@ -6,7 +6,7 @@ spring:
     name: transaction-service
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/transactiondb}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5435/transactiondb}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
     password: ${SPRING_DATASOURCE_PASSWORD:123456}
     driver-class-name: org.postgresql.Driver
@@ -17,8 +17,8 @@ spring:
 
 services:
   account-service:
-  url: ${ACCOUNT_SERVICE_URL:http://localhost:4001}
-  timeout: 5000 # 5 seconds timeout for sync calls
+    url: ${ACCOUNT_SERVICE_URL:http://localhost:4001}
+    timeout: 5000 # 5 seconds timeout for sync calls
 
 # JWT Configuration
 jwt:

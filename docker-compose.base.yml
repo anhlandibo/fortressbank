@@ -10,3 +10,4 @@ volumes:
   transactiondb_data:
   accountdb_data:
   keycloak_db_data:
+  auditdb_data:

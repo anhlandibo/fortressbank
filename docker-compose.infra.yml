@@ -83,7 +83,7 @@ services:
   #     POSTGRES_PASSWORD: 123456
   #     POSTGRES_DB: referencedb
   #   ports:
-  #     - "5003:5432"
+  #     - "5437:5432"
   #   volumes:
   #     # This 'referencedb_data' is defined in docker-compose.base.yml
   #     - referencedb_data:/var/lib/postgresql/data
@@ -107,6 +107,26 @@ services:
     volumes:
       # This 'transactiondb_data' is defined in docker-compose.base.yml
       - transactiondb_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -h localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  audit-service-db:
+    image: postgres:16-alpine
+    container_name: audit-service-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: auditdb
+    ports:
+      - "5436:5432"
+    volumes:
+      # This 'auditdb_data' is defined in docker-compose.base.yml
+      - auditdb_data:/var/lib/postgresql/data
     networks:
       - internal
     healthcheck:

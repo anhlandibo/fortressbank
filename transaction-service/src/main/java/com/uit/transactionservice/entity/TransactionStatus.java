@@ -9,5 +9,6 @@ public enum TransactionStatus {
     FAILED,        // Thất bại
     CANCELLED,     // Đã hủy
     OTP_EXPIRED,   // OTP hết hạn
-    ROLLBACK_FAILED // Rollback thất bại - cần xử lý thủ công
+    ROLLBACK_FAILED, // Rollback thất bại - cần xử lý thủ công
+    ROLLBACK_COMPLETED // Rollback hoàn thành
 }

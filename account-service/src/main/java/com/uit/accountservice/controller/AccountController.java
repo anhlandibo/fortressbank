@@ -80,58 +80,58 @@ public class AccountController {
         );
     }
 
-    @PostMapping("/transfers")
-    @PreAuthorize("@accountService.isOwner(#transferRequest.fromAccountId, authentication.name)")
-    @RequireRole("user")
-    public ResponseEntity<?> handleTransfer(@RequestBody TransferRequest transferRequest, HttpServletRequest request) {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> userInfo = (Map<String, Object>) request.getAttribute("userInfo");
-        String userId = (String) userInfo.get("sub");
+    // @PostMapping("/transfers")
+    // @PreAuthorize("@accountService.isOwner(#transferRequest.fromAccountId, authentication.name)")
+    // @RequireRole("user")
+    // public ResponseEntity<?> handleTransfer(@RequestBody TransferRequest transferRequest, HttpServletRequest request) {
+    //     @SuppressWarnings("unchecked")
+    //     Map<String, Object> userInfo = (Map<String, Object>) request.getAttribute("userInfo");
+    //     String userId = (String) userInfo.get("sub");
         
-        // Extract fraud detection metadata from headers
-        String deviceFingerprint = request.getHeader("X-Device-Fingerprint");
-        String ipAddress = request.getHeader("X-Forwarded-For");
-        if (ipAddress == null) {
-            ipAddress = request.getRemoteAddr();
-        }
-        String location = request.getHeader("X-Location"); // Expected format: "City, Country" or "Country"
+    //     // Extract fraud detection metadata from headers
+    //     String deviceFingerprint = request.getHeader("X-Device-Fingerprint");
+    //     String ipAddress = request.getHeader("X-Forwarded-For");
+    //     if (ipAddress == null) {
+    //         ipAddress = request.getRemoteAddr();
+    //     }
+    //     String location = request.getHeader("X-Location"); // Expected format: "City, Country" or "Country"
         
-        return ResponseEntity.ok(accountService.handleTransfer(
-                transferRequest, userId, deviceFingerprint, ipAddress, location));
-    }
+    //     return ResponseEntity.ok(accountService.handleTransfer(
+    //             transferRequest, userId, deviceFingerprint, ipAddress, location));
+    // }
 
-    @PostMapping("/verify-transfer")
-    @RequireRole("user")
-    public ResponseEntity<AccountDto> verifyTransfer(@RequestBody VerifyTransferRequest verifyTransferRequest) {
-        return ResponseEntity.ok(accountService.verifyTransfer(verifyTransferRequest));
-    }
+    // @PostMapping("/verify-transfer")
+    // @RequireRole("user")
+    // public ResponseEntity<AccountDto> verifyTransfer(@RequestBody VerifyTransferRequest verifyTransferRequest) {
+    //     return ResponseEntity.ok(accountService.verifyTransfer(verifyTransferRequest));
+    // }
 
     /**
      * Get audit logs for the current user's transfers.
      * Users can only see their own transfer history.
      */
-    @GetMapping("/audit/my-transfers")
-    @RequireRole("user")
-    public ResponseEntity<List<TransferAuditLog>> getMyTransferAudit(HttpServletRequest request) {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> userInfo = (Map<String, Object>) request.getAttribute("userInfo");
-        String userId = (String) userInfo.get("sub");
+    // @GetMapping("/audit/my-transfers")
+    // @RequireRole("user")
+    // public ResponseEntity<List<TransferAuditLog>> getMyTransferAudit(HttpServletRequest request) {
+    //     @SuppressWarnings("unchecked")
+    //     Map<String, Object> userInfo = (Map<String, Object>) request.getAttribute("userInfo");
+    //     String userId = (String) userInfo.get("sub");
         
-        List<TransferAuditLog> auditLogs = auditService.getUserTransferHistory(userId);
-        return ResponseEntity.ok(auditLogs);
-    }
+    //     List<TransferAuditLog> auditLogs = auditService.getUserTransferHistory(userId);
+    //     return ResponseEntity.ok(auditLogs);
+    // }
 
     /**
      * Get audit logs for a specific account.
      * Users can only see audit logs for accounts they own.
      */
-    @GetMapping("/audit/account/{accountId}")
-    @PreAuthorize("@accountService.isOwner(#accountId, authentication.name)")
-    @RequireRole("user")
-    public ResponseEntity<List<TransferAuditLog>> getAccountAuditLogs(@PathVariable String accountId) {
-        List<TransferAuditLog> auditLogs = auditService.getAccountTransferHistory(accountId);
-        return ResponseEntity.ok(auditLogs);
-    }
+    // @GetMapping("/audit/account/{accountId}")
+    // @PreAuthorize("@accountService.isOwner(#accountId, authentication.name)")
+    // @RequireRole("user")
+    // public ResponseEntity<List<TransferAuditLog>> getAccountAuditLogs(@PathVariable String accountId) {
+    //     List<TransferAuditLog> auditLogs = auditService.getAccountTransferHistory(accountId);
+    //     return ResponseEntity.ok(auditLogs);
+    // }
 
     /**
      * Debit (subtract) amount from an account.
@@ -156,20 +156,24 @@ public class AccountController {
     /**
      * Credit (add) amount to an account.
      */
-
-
-    // Section of BoLac
-    private String getCurrentUserId() {
-        var authentication = SecurityContextHolder.getContext().getAuthentication();
-        return authentication.getName(); // Trả về 'sub' (userId)
+    @PostMapping("/{accountId}/credit")
+    public ResponseEntity<?> creditAccount(
+            @PathVariable String accountId,
+            @RequestBody com.uit.accountservice.dto.request.AccountBalanceRequest request) {
+        try {
+            com.uit.accountservice.dto.response.AccountBalanceResponse response = 
+                accountService.creditAccount(accountId, request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "message", e.getMessage(),
+                "transactionId", request.getTransactionId()
+            ));
+        }
     }
 
-    // GET /accounts
-    @GetMapping
-    public ResponseEntity<ApiResponse<List<AccountDto>>> getMyAccounts() {
-        List<AccountDto> accounts = accountService.getMyAccounts(getCurrentUserId());
-        return ResponseEntity.ok(ApiResponse.success(accounts));
-    }
+  
 
     /**
      * Get velocity check for a user (admin only).
@@ -189,6 +193,19 @@ public class AccountController {
                 "transactionId", request.getTransactionId()
             ));
         }
+    }
+
+  // Section of BoLac
+    private String getCurrentUserId() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication.getName(); // Trả về 'sub' (userId)
+    }
+
+    // GET /accounts
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<AccountDto>>> getMyAccounts() {
+        List<AccountDto> accounts = accountService.getMyAccounts(getCurrentUserId());
+        return ResponseEntity.ok(ApiResponse.success(accounts));
     }
 
     /**
