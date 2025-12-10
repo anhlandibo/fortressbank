@@ -22,12 +22,11 @@ import java.util.stream.Collectors;
 @EnableMethodSecurity
 public class SecurityConfig {
     private static final String[] PUBLIC_ENDPOINTS = {
-            "/auth/register", 
-            "/auth/login", 
-            "/auth/refresh", 
+            "/auth/register",
+            "/auth/login",
+            "/auth/refresh",
             "/auth/logout",
-            "/auth/validate-registration",
-            "/auth/send-otp",
+            "/auth/validate-and-send-otp",
             "/auth/verify-otp"
     };
 
@@ -38,7 +37,7 @@ public class SecurityConfig {
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                     .requestMatchers("/actuator/**").permitAll()
-                    // Allow ALL /auth endpoints (registration, login, logout, refresh, validate, send-otp, verify-otp)
+                    // Allow ALL /auth endpoints (register, login, logout, refresh, validate-and-send-otp, verify-otp)
                     .requestMatchers("/auth/**").permitAll()
                     // All other requests require authentication
                         .anyRequest().authenticated()

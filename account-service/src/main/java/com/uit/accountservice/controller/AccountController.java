@@ -34,13 +34,13 @@ public class AccountController {
     
     // change this to check health for this endpoint
     @GetMapping("/")
-    public Map<String, Object> healthCheck() {
-        return Map.of("status", "Account Service is running");
+    public ApiResponse<Map<String, String>> healthCheck() {
+        return ApiResponse.success(Map.of("status", "Account Service is running"));
     }
-    
+
     @GetMapping("/my-accounts")
     @RequireRole("user")
-    public Map<String, Object> getMyAccountsWithUserInfo(HttpServletRequest request) {
+    public ApiResponse<Map<String, Object>> getMyAccountsWithUserInfo(HttpServletRequest request) {
         @SuppressWarnings("unchecked")
         Map<String, Object> userInfo = (Map<String, Object>) request.getAttribute("userInfo");
         String userId = null;
@@ -59,27 +59,27 @@ public class AccountController {
         }
 
         List<AccountDto> accounts = accountService.getAccountsByUserId(userId);
-        
-        return Map.of(
+
+        return ApiResponse.success(Map.of(
             "message", "Your accounts",
             "user", userInfo,
             "accounts", accounts
-        );
+        ));
     }
-    
+
     @GetMapping("/dashboard")
     @RequireRole("admin")  // Like requireRole('admin') in Express
-    public Map<String, Object> getDashboard(HttpServletRequest request) {
-        return Map.of(
+    public ApiResponse<Map<String, Object>> getDashboard(HttpServletRequest request) {
+        return ApiResponse.success(Map.of(
             "message", "Admin Dashboard",
             "stats", Map.of("totalUsers", 42, "totalAccounts", 100)
-        );
+        ));
     }
 
     @PostMapping("/transfers")
     @PreAuthorize("@accountService.isOwner(#transferRequest.fromAccountId, authentication.name)")
     @RequireRole("user")
-    public ResponseEntity<?> handleTransfer(@RequestBody TransferRequest transferRequest, HttpServletRequest request) {
+    public ResponseEntity<ApiResponse<Object>> handleTransfer(@RequestBody TransferRequest transferRequest, HttpServletRequest request) {
         @SuppressWarnings("unchecked")
         Map<String, Object> userInfo = (Map<String, Object>) request.getAttribute("userInfo");
         String userId = (String) userInfo.get("sub");
@@ -92,14 +92,15 @@ public class AccountController {
         }
         String location = request.getHeader("X-Location"); // Expected format: "City, Country" or "Country"
 
-        return ResponseEntity.ok(accountService.handleTransfer(
-                transferRequest, userId, deviceFingerprint, ipAddress, location));
+        Object result = accountService.handleTransfer(transferRequest, userId, deviceFingerprint, ipAddress, location);
+        return ResponseEntity.ok(ApiResponse.success(result));
     }
 
     @PostMapping("/verify-transfer")
     @RequireRole("user")
-    public ResponseEntity<AccountDto> verifyTransfer(@RequestBody VerifyTransferRequest verifyTransferRequest) {
-        return ResponseEntity.ok(accountService.verifyTransfer(verifyTransferRequest));
+    public ResponseEntity<ApiResponse<AccountDto>> verifyTransfer(@RequestBody VerifyTransferRequest verifyTransferRequest) {
+        AccountDto result = accountService.verifyTransfer(verifyTransferRequest);
+        return ResponseEntity.ok(ApiResponse.success(result));
     }
 
     /**
@@ -108,13 +109,13 @@ public class AccountController {
      */
     @GetMapping("/audit/my-transfers")
     @RequireRole("user")
-    public ResponseEntity<List<TransferAuditLog>> getMyTransferAudit(HttpServletRequest request) {
+    public ResponseEntity<ApiResponse<List<TransferAuditLog>>> getMyTransferAudit(HttpServletRequest request) {
         @SuppressWarnings("unchecked")
         Map<String, Object> userInfo = (Map<String, Object>) request.getAttribute("userInfo");
         String userId = (String) userInfo.get("sub");
-        
+
         List<TransferAuditLog> auditLogs = auditService.getUserTransferHistory(userId);
-        return ResponseEntity.ok(auditLogs);
+        return ResponseEntity.ok(ApiResponse.success(auditLogs));
     }
 
     /**
@@ -124,9 +125,9 @@ public class AccountController {
     @GetMapping("/audit/account/{accountId}")
     @PreAuthorize("@accountService.isOwner(#accountId, authentication.name)")
     @RequireRole("user")
-    public ResponseEntity<List<TransferAuditLog>> getAccountAuditLogs(@PathVariable String accountId) {
+    public ResponseEntity<ApiResponse<List<TransferAuditLog>>> getAccountAuditLogs(@PathVariable String accountId) {
         List<TransferAuditLog> auditLogs = auditService.getAccountTransferHistory(accountId);
-        return ResponseEntity.ok(auditLogs);
+        return ResponseEntity.ok(ApiResponse.success(auditLogs));
     }
 
     /**
@@ -235,5 +236,43 @@ public class AccountController {
     public ResponseEntity<ApiResponse<Void>> updatePin(@PathVariable("id") String id, @Valid @RequestBody UpdatePinRequest request) {
         accountService.updatePin(id, getCurrentUserId(), request.oldPin(), request.newPin());
         return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    // POST /accounts/{accountId}/pin/verify
+    @PostMapping("/{accountId}/pin/verify")
+    public ResponseEntity<ApiResponse<Map<String, Boolean>>> verifyPin(
+            @PathVariable("accountId") String accountId,
+            @Valid @RequestBody VerifyPinRequest request) {
+        boolean isValid = accountService.verifyPin(accountId, getCurrentUserId(), request.pin());
+        return ResponseEntity.ok(ApiResponse.success(Map.of("valid", isValid)));
+    }
+
+    // ==================== PUBLIC ENDPOINTS (NO AUTH) ====================
+
+    /**
+     * Public endpoint to create PIN without authentication.
+     * Used after registration when user hasn't logged in yet.
+     */
+    @PostMapping("/public/{accountId}/pin")
+    public ResponseEntity<ApiResponse<Void>> createPinPublic(
+            @PathVariable("accountId") String accountId,
+            @Valid @RequestBody PinRequest request) {
+        accountService.createPinPublic(accountId, request.newPin());
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(null));
+    }
+
+    // ==================== INTERNAL ENDPOINTS ====================
+
+    /**
+     * Internal endpoint for user-service to create account during registration
+     * This endpoint is called by user-service via Feign Client
+     */
+    @PostMapping("/internal/create/{userId}")
+    public ResponseEntity<ApiResponse<AccountDto>> createAccountForUser(
+            @PathVariable("userId") String userId,
+            @Valid @RequestBody CreateAccountRequest request) {
+        AccountDto newAccount = accountService.createAccount(userId, request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(newAccount));
     }
 }

@@ -27,6 +27,13 @@ public class ParseUserInfoFilter implements Filter {
         HttpServletRequest httpRequest = (HttpServletRequest) request;
         HttpServletResponse httpResponse = (HttpServletResponse) response;
 
+        // Skip authentication for internal and public endpoints
+        String requestPath = httpRequest.getRequestURI();
+        if (requestPath.startsWith("/accounts/internal/") || requestPath.startsWith("/accounts/public/")) {
+            chain.doFilter(request, response);
+            return;
+        }
+
         String authHeader = httpRequest.getHeader("Authorization");
         Map<String, Object> userInfo = null;
 

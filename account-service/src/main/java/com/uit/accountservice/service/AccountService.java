@@ -596,6 +596,40 @@ public class AccountService {
         accountRepository.save(account);
     }
 
+    /**
+     * Create PIN without authentication (for post-registration flow).
+     * This allows users to set up PIN immediately after registration without logging in.
+     */
+    @Transactional
+    public void createPinPublic(String accountId, String newPin) {
+        validatePinFormat(newPin);
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND));
+
+        if (account.getPinHash() != null) {
+            throw new AppException(ErrorCode.BAD_REQUEST, "PIN already exists. Cannot create duplicate PIN.");
+        }
+
+        account.setPinHash(passwordEncoder.encode(newPin));
+        accountRepository.save(account);
+        log.info("PIN created successfully for account {}", accountId);
+    }
+
+    /**
+     * Verify if the provided PIN matches the account's PIN.
+     * Used during transfer flow to validate user authorization.
+     */
+    public boolean verifyPin(String accountId, String userId, String pin) {
+        validatePinFormat(pin);
+        Account account = getAccountOwnedByUser(accountId, userId);
+
+        if (account.getPinHash() == null) {
+            throw new AppException(ErrorCode.BAD_REQUEST, "PIN not set for this account");
+        }
+
+        return passwordEncoder.matches(pin, account.getPinHash());
+    }
+
     // Helpers
     private Account getAccountOwnedByUser(String accountId, String userId) {
         Account account = accountRepository.findById(accountId)

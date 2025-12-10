@@ -28,6 +28,15 @@ services:
           - /admin/users
         strip_path: false
 
+  # public account endpoints (no auth required)
+  - name: account-public-service
+    url: http://account-service:4001
+    routes:
+      - name: account-public-route
+        paths:
+          - /accounts/public
+        strip_path: false
+
   # protected account
   - name: account-service
     url: http://account-service:4001
@@ -64,7 +73,7 @@ plugins:
     route: user-main-route
     config:
       client_id: "kong"
-      client_secret: "KzZmVQX8UbzbsNDNL79KwphKbhTFKfR2"
+      client_secret: "pmFStZwGO8sb0mBDkZmP5niE3wmEELqe"
       discovery: "http://keycloak:8080/realms/fortressbank-realm/.well-known/openid-configuration"
       session_secret: "random-secret-here"
       scope: "openid profile email"
@@ -77,7 +86,7 @@ plugins:
     route: admin-user-route
     config:
       client_id: "kong"
-      client_secret: "KzZmVQX8UbzbsNDNL79KwphKbhTFKfR2" # Dùng đúng secret của bạn
+      client_secret: "pmFStZwGO8sb0mBDkZmP5niE3wmEELqe" # Dùng đúng secret của bạn
       discovery: "http://keycloak:8080/realms/fortressbank-realm/.well-known/openid-configuration"
       scope: "openid profile email"
       ssl_verify: false
@@ -90,7 +99,7 @@ plugins:
     route: account-service-route
     config:
       client_id: "kong"
-      client_secret: "KzZmVQX8UbzbsNDNL79KwphKbhTFKfR2"
+      client_secret: "pmFStZwGO8sb0mBDkZmP5niE3wmEELqe"
       discovery: "http://keycloak:8080/realms/fortressbank-realm/.well-known/openid-configuration"
       session_secret: "random-secret-here"
       scope: "openid profile email"
@@ -103,7 +112,7 @@ plugins:
     route: transaction-service-route
     config:
       client_id: "kong"
-      client_secret: "KzZmVQX8UbzbsNDNL79KwphKbhTFKfR2"
+      client_secret: "pmFStZwGO8sb0mBDkZmP5niE3wmEELqe"
       discovery: "http://keycloak:8080/realms/fortressbank-realm/.well-known/openid-configuration"
       session_secret: "random-secret-here"
       scope: "openid profile email"

@@ -44,4 +44,8 @@ public class RegisterRequest {
 
     @Pattern(regexp = "^[0-9]{10,11}$", message = "PHONE_NUMBER_INVALID_FORMAT")
     private String phoneNumber;
+
+    @NotBlank(message = "ACCOUNT_NUMBER_TYPE_REQUIRED")
+    @Pattern(regexp = "^(PHONE_NUMBER|AUTO_GENERATE)$", message = "ACCOUNT_NUMBER_TYPE_INVALID")
+    private String accountNumberType;
 }

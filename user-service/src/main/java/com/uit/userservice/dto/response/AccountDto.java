@@ -1,4 +1,4 @@
-package com.uit.accountservice.dto;
+package com.uit.userservice.dto.response;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

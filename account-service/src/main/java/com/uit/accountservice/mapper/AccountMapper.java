@@ -7,10 +7,9 @@ import com.uit.accountservice.entity.enums.AccountStatus;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
-
 @Mapper(componentModel = "spring")
 public interface AccountMapper {
-    @Mapping(target = "accountStatus", source = "status")
+    @Mapping(source = "status", target = "accountStatus")
     AccountDto toDto(Account account);
 
     default String map(AccountStatus status) {

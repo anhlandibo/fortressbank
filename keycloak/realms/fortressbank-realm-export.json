@@ -684,7 +684,7 @@
       "enabled": true,
       "alwaysDisplayInConsole": false,
       "clientAuthenticatorType": "client-secret",
-      "secret": "**********",
+      "secret": "pmFStZwGO8sb0mBDkZmP5niE3wmEELqe",
       "redirectUris": [],
       "webOrigins": [],
       "notBefore": 0,
@@ -822,7 +822,7 @@
       "enabled": true,
       "alwaysDisplayInConsole": false,
       "clientAuthenticatorType": "client-secret",
-      "secret": "**********",
+      "secret": "pmFStZwGO8sb0mBDkZmP5niE3wmEELqe",
       "redirectUris": [
         "http://localhost:8000/auth"
       ],

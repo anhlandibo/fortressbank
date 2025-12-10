@@ -6,7 +6,10 @@ import com.uit.sharedkernel.event.UserCreatedEvent;
 import com.uit.sharedkernel.outbox.OutboxEvent;
 import com.uit.sharedkernel.outbox.OutboxEventStatus;
 import com.uit.sharedkernel.outbox.repository.OutboxEventRepository;
+import com.uit.userservice.client.AccountClient;
+import com.uit.userservice.client.CreateAccountInternalRequest;
 import com.uit.userservice.dto.request.*;
+import com.uit.userservice.dto.response.AccountDto;
 import com.uit.userservice.dto.response.OtpResponse;
 import com.uit.userservice.dto.response.TokenResponse;
 import com.uit.userservice.dto.response.UserResponse;
@@ -26,7 +29,6 @@ import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
-@Transactional
 @Slf4j
 public class AuthServiceImpl implements AuthService {
 
@@ -36,52 +38,36 @@ public class AuthServiceImpl implements AuthService {
     private final ObjectMapper objectMapper;
     private final RedisTemplate<String, String> redisTemplate;
     private final org.springframework.amqp.rabbit.core.RabbitTemplate rabbitTemplate;
+    private final EmailService emailService;
+    private final AccountClient accountClient;
 
     // ==================== NEW MULTI-STEP REGISTRATION FLOW ====================
 
     @Override
-    public ValidationResponse validateRegistration(ValidateRegistrationRequest request) {
+    public OtpResponse validateAndSendOtp(ValidateRegistrationRequest request) {
         // Check if email already exists
         if (userRepository.findByEmail(request.getEmail()).isPresent()) {
-            return new ValidationResponse(false, "EMAIL_ALREADY_EXISTS");
+            throw new AppException(ErrorCode.EMAIL_EXISTS);
         }
 
         // Check if phone number already exists
         if (userRepository.findByPhoneNumber(request.getPhoneNumber()).isPresent()) {
-            return new ValidationResponse(false, "PHONE_NUMBER_ALREADY_EXISTS");
+            throw new AppException(ErrorCode.BAD_REQUEST, "PHONE_NUMBER_ALREADY_EXISTS");
         }
 
         // Check if citizen ID already exists
         if (userRepository.findByCitizenId(request.getCitizenId()).isPresent()) {
-            return new ValidationResponse(false, "CITIZEN_ID_ALREADY_EXISTS");
+            throw new AppException(ErrorCode.BAD_REQUEST, "CITIZEN_ID_ALREADY_EXISTS");
         }
 
         // Store validation data in Redis temporarily (valid for 10 minutes)
-        String key = "registration:validate:" + request.getEmail();
+        String validationKey = "registration:validate:" + request.getEmail();
         redisTemplate.opsForValue().set(
-                key,
+                validationKey,
                 request.getCitizenId() + "|" + request.getPhoneNumber(),
                 10,
                 TimeUnit.MINUTES
         );
-
-        return new ValidationResponse(true, "VALIDATION_SUCCESS");
-    }
-
-    @Override
-    public OtpResponse sendOtp(SendOtpRequest request) {
-        // Verify that validation was done
-        String validationKey = "registration:validate:" + request.getEmail();
-        String validationData;
-        try {
-            validationData = redisTemplate.opsForValue().get(validationKey);
-        } catch (Exception ex) {
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION, "REDIS_ERROR");
-        }
-
-        if (validationData == null) {
-            throw new AppException(ErrorCode.BAD_REQUEST, "VALIDATION_NOT_FOUND");
-        }
 
         // Generate 6-digit OTP
         String otp = String.format("%06d", (int)(Math.random() * 1000000));
@@ -90,14 +76,19 @@ public class AuthServiceImpl implements AuthService {
         String otpKey = "otp:" + request.getEmail();
         redisTemplate.opsForValue().set(otpKey, otp, 5, TimeUnit.MINUTES);
 
-        // For now, we just log it
-        if ("EMAIL".equals(request.getOtpMethod())) {
-            System.out.println("EMAIL OTP for " + request.getEmail() + ": " + otp);
-        } else if ("SMS".equals(request.getOtpMethod())) {
-            System.out.println("SMS OTP for " + request.getPhoneNumber() + ": " + otp);
+        // Send OTP via email
+        try {
+            emailService.sendOtpEmail(request.getEmail(), otp, 5);
+            log.info("OTP sent successfully to {}", request.getEmail());
+        } catch (Exception e) {
+            log.error("Failed to send OTP email to {}: {}", request.getEmail(), e.getMessage());
+            // Clean up Redis if email fails
+            redisTemplate.delete(otpKey);
+            redisTemplate.delete(validationKey);
+            throw new AppException(ErrorCode.NOTIFICATION_SERVICE_FAILED, "Failed to send OTP email");
         }
 
-        return new OtpResponse(true, "OTP_SENT_SUCCESSFULLY", request.getOtpMethod());
+        return new OtpResponse(true, "OTP_SENT_SUCCESSFULLY");
     }
 
     @Override
@@ -127,12 +118,52 @@ public class AuthServiceImpl implements AuthService {
         return new ValidationResponse(true, "OTP_VERIFIED_SUCCESSFULLY");
     }
 
-    // completeRegistration removed: use `register()` after OTP verification
-
-    // ==================== OLD REGISTRATION FLOW (KEEP FOR BACKWARD COMPATIBILITY) ====================
-
     @Override
     public UserResponse register(RegisterRequest request) {
+        // Create user in transaction (atomic operation)
+        User user = createUserInTransaction(request);
+
+        // Post-registration tasks (non-transactional, can fail without affecting user creation)
+
+        // Send welcome email (async, non-blocking)
+        try {
+            emailService.sendWelcomeEmail(user.getEmail(), user.getFullName());
+        } catch (Exception e) {
+            log.warn("Failed to send welcome email to {}: {}", user.getEmail(), e.getMessage());
+            // Don't fail registration if welcome email fails
+        }
+
+        // Create account for user automatically
+        try {
+            log.info("Creating account for user {} with accountNumberType {}", user.getId(), request.getAccountNumberType());
+            CreateAccountInternalRequest accountRequest = CreateAccountInternalRequest.builder()
+                    .accountNumberType(request.getAccountNumberType())
+                    .phoneNumber(request.getPhoneNumber())
+                    .build();
+
+            AccountDto account = accountClient.createAccountForUser(user.getId(), accountRequest).getData();
+            log.info("Account created successfully for user {} with accountNumber {}",
+                    user.getId(), account.getAccountNumber());
+        } catch (Exception e) {
+            log.error("Failed to create account for user {}: {}", user.getId(), e.getMessage(), e);
+            // Don't fail registration if account creation fails
+            // User can create account manually later
+        }
+
+        return new UserResponse(
+                user.getId(),
+                user.getUsername(),
+                user.getEmail(),
+                user.getFullName(),
+                user.getCitizenId(),
+                user.getDob(),
+                user.getPhoneNumber(),
+                user.getCreatedAt()
+        );
+    }
+
+    @Transactional
+    private User createUserInTransaction(RegisterRequest request) {
         // Verify OTP was completed for this email
         String verifiedKey = "otp:verified:" + request.getEmail();
         String isVerified;
@@ -179,7 +210,7 @@ public class AuthServiceImpl implements AuthService {
             throw new AppException(ErrorCode.EMAIL_EXISTS);
         }
 
-        // 1. tạo user trong Keycloak
+        // 1. Create user in Keycloak
         String keycloakUserId = keycloakClient.createUser(
                 request.getUsername(),
                 request.getEmail(),
@@ -187,7 +218,7 @@ public class AuthServiceImpl implements AuthService {
                 request.getPassword()
         );
 
-        // 2. tạo bản ghi profile trong DB local
+        // 2. Create user profile in local DB
         User user = new User();
         user.setId(keycloakUserId);
         user.setUsername(request.getUsername());
@@ -197,8 +228,9 @@ public class AuthServiceImpl implements AuthService {
         user.setCitizenId(request.getCitizenId());
         user.setPhoneNumber(request.getPhoneNumber());
 
-        userRepository.save(user);
+        user = userRepository.save(user); // Assign back to get the persisted entity with createdAt
 
+        // 3. Create outbox event
         UserCreatedEvent eventPayload = UserCreatedEvent.builder()
                 .userId(user.getId())
                 .username(user.getUsername())
@@ -207,20 +239,20 @@ public class AuthServiceImpl implements AuthService {
                 .build();
 
         try {
-            // Lưu vào bảng Outbox
+            // Save to Outbox table
             OutboxEvent outboxEvent = OutboxEvent.builder()
                     .aggregateType("USER")
                     .aggregateId(user.getId())
                     .eventType("UserCreated")
                     .exchange(RabbitMQConstants.INTERNAL_EXCHANGE)
                     .routingKey(RabbitMQConstants.USER_CREATED_ROUTING_KEY)
-                    .payload(objectMapper.writeValueAsString(eventPayload)) // Convert to JSON
+                    .payload(objectMapper.writeValueAsString(eventPayload))
                     .status(OutboxEventStatus.PENDING)
                     .build();
 
             outboxEventRepository.save(outboxEvent);
 
-            // Also publish immediately to RabbitMQ to speed up downstream processing (idempotent consumer)
+            // Try to publish immediately to RabbitMQ (best effort, non-blocking)
             try {
                 rabbitTemplate.convertAndSend(
                         RabbitMQConstants.INTERNAL_EXCHANGE,
@@ -239,16 +271,7 @@ public class AuthServiceImpl implements AuthService {
         redisTemplate.delete(validationKey);
         redisTemplate.delete(verifiedKey);
 
-        return new UserResponse(
-                user.getId(),
-                user.getUsername(),
-                user.getEmail(),
-                user.getFullName(),
-                user.getCitizenId(),
-                user.getDob(),
-                user.getPhoneNumber(),
-                user.getCreatedAt()
-        );
+        return user;
     }
 
     // ==================== OTHER AUTH METHODS ====================

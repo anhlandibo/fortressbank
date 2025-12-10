@@ -15,50 +15,32 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/auth")
 @RequiredArgsConstructor
 public class AuthController {
-
     private final AuthService authService;
 
-    // ==================== NEW MULTI-STEP REGISTRATION FLOW ====================
-
     /**
-     * Step 1: Validate registration data (email, phoneNumber, citizenId)
+     * Step 1: Validate registration data (email, phoneNumber, citizenId) and send OTP
      */
-    @PostMapping("/validate-registration")
-    public ApiResponse<ValidationResponse> validateRegistration(@Valid @RequestBody ValidateRegistrationRequest request) {
-        return ApiResponse.success(authService.validateRegistration(request));
+    @PostMapping("/validate-and-send-otp")
+    public ApiResponse<OtpResponse> validateAndSendOtp(@Valid @RequestBody ValidateRegistrationRequest request) {
+        return ApiResponse.success(authService.validateAndSendOtp(request));
     }
 
     /**
-     * Step 2: Send OTP to email or SMS
-     */
-    @PostMapping("/send-otp")
-    public ApiResponse<OtpResponse> sendOtp(@Valid @RequestBody SendOtpRequest request) {
-        return ApiResponse.success(authService.sendOtp(request));
-    }
-
-    /**
-     * Step 3: Verify OTP
+     * Step 2: Verify OTP
      */
     @PostMapping("/verify-otp")
     public ApiResponse<ValidationResponse> verifyOtp(@Valid @RequestBody VerifyOtpRequest request) {
         return ApiResponse.success(authService.verifyOtp(request));
     }
 
-    /**
-     * Step 4: Complete registration with full user information
-     * Requires email, phoneNumber, citizenId from previous steps
-     */
-    // Complete registration is performed by calling the existing `/auth/register` endpoint
 
-    // ==================== OLD REGISTRATION FLOW (BACKWARD COMPATIBILITY) ====================
-
+    // Register
     @PostMapping("/register")
     public ApiResponse<UserResponse> register(@Valid @RequestBody RegisterRequest request) {
         return ApiResponse.success(authService.register(request));
     }
 
     // ==================== OTHER AUTH ENDPOINTS ====================
-
     @PostMapping("/login")
     public ApiResponse<TokenResponse> login(@Valid @RequestBody LoginRequest request) {
         return ApiResponse.success(authService.login(request));

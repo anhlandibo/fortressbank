@@ -12,9 +12,7 @@ public interface AuthService {
     UserResponse register(RegisterRequest request);
 
     // New multi-step registration flow
-    ValidationResponse validateRegistration(ValidateRegistrationRequest request);
-
-    OtpResponse sendOtp(SendOtpRequest request);
+    OtpResponse validateAndSendOtp(ValidateRegistrationRequest request);
 
     ValidationResponse verifyOtp(VerifyOtpRequest request);
     TokenResponse login(LoginRequest request);
