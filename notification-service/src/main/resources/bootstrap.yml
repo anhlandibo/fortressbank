@@ -3,5 +3,6 @@ spring:
     name: notification-service
   cloud:
     config:
-      fail-fast: true
+      enabled: false
+      fail-fast: false
       uri: http://localhost:8889

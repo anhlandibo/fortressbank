@@ -4,33 +4,47 @@ import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.FirebaseMessagingException;
 import com.google.firebase.messaging.Message;
 import com.google.firebase.messaging.Notification;
+import com.uit.notificationservice.dto.SendNotificationRequest;
 import com.uit.notificationservice.entity.NotificationMessage;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class FirebaseMessagingService {
     private final FirebaseMessaging firebaseMessaging;
 
-    public void sendNotification(NotificationMessage msg) throws FirebaseMessagingException {
-//        firebaseMessaging = FirebaseMessaging.getInstance();
+    public void sendNotification(List<String> deviceTokens, SendNotificationRequest request) throws FirebaseMessagingException {
         Notification notification = Notification
                 .builder()
-                .setTitle(msg.getTitle())
-                .setBody(msg.getContent())
-                .setImage(msg.getImage())
+                .setTitle(request.getTitle())
+                .setBody(request.getContent())
+                .setImage(request.getImage())
                 .build();
 
-        Message message = Message
-                .builder()
-                .setToken(msg.getDeviceToken())
-                .setNotification(notification)
-//                .putAllData(msg.get)
-                .build();
+        List<Message> messages = deviceTokens
+                .stream()
+                .map(token -> {
+                    return Message
+                            .builder()
+                            .setToken(token)
+                            .setNotification(notification)
+//                            .putAllData(msg.get)
+                            .build();
+                }).toList();
 
-
-        firebaseMessaging.send(message);
-//        return "Notification Sent Successfully";
+        CompletableFuture.runAsync(() -> {
+            try {
+                firebaseMessaging.sendEach(messages);
+                log.info("Firebase messages sent successfully to {} devices", deviceTokens.size());
+            } catch (FirebaseMessagingException e) {
+                log.error("Failed to send Firebase messages: {}", e.getMessage(), e);
+            }
+        });
     }
 }

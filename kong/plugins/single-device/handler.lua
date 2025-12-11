@@ -1,0 +1,145 @@
+local kong = kong
+local cjson = require "cjson.safe"
+local http = require "resty.http"
+
+local SingleDeviceHandler = {
+  PRIORITY = 900,
+  VERSION = "1.0.0",
+}
+
+local function decode_jwt_payload(token)
+  if not token then
+    return nil, "missing token"
+  end
+
+  local parts = {}
+  for part in string.gmatch(token, "[^.]+") do
+    table.insert(parts, part)
+  end
+
+  if #parts < 2 then
+    return nil, "invalid token format"
+  end
+
+  local payload_b64 = parts[2]
+  -- Normalize URL-safe base64
+  payload_b64 = payload_b64:gsub("-", "+"):gsub("_", "/")
+  local padding = #payload_b64 % 4
+  if padding == 2 then
+    payload_b64 = payload_b64 .. "=="
+  elseif padding == 3 then
+    payload_b64 = payload_b64 .. "="
+  elseif padding ~= 0 then
+    return nil, "invalid base64 padding"
+  end
+
+  local payload_json = ngx.decode_base64(payload_b64)
+  if not payload_json then
+    return nil, "failed to base64 decode payload"
+  end
+
+  local payload, err = cjson.decode(payload_json)
+  if not payload then
+    return nil, "failed to decode JSON payload: " .. (err or "unknown")
+  end
+
+  return payload, nil
+end
+
+local function fetch_user_sessions(conf, user_id)
+  local httpc = http.new()
+  local url = string.format("%s/admin/realms/%s/users/%s/sessions", conf.keycloak_url, conf.realm, user_id)
+
+  local res, err = httpc:request_uri(url, {
+    method = "GET",
+    headers = {
+      ["Authorization"] = "Bearer " .. conf.admin_token,
+      ["Accept"] = "application/json",
+    },
+    ssl_verify = false,
+  })
+
+  if not res then
+    return nil, "failed to query Keycloak: " .. (err or "unknown")
+  end
+
+  if res.status ~= 200 then
+    return nil, "unexpected status from Keycloak: " .. res.status
+  end
+
+  local data, decode_err = cjson.decode(res.body)
+  if not data then
+    return nil, "failed to decode Keycloak response: " .. (decode_err or "unknown")
+  end
+
+  return data, nil
+end
+
+function SingleDeviceHandler:access(conf)
+  local auth_header = kong.request.get_header("authorization")
+  if not auth_header then
+    return
+  end
+
+  local token = auth_header:match("Bearer%s+(.+)")
+  if not token then
+    return
+  end
+
+  local payload, err = decode_jwt_payload(token)
+  if not payload then
+    kong.log.err("single-device: unable to parse JWT: ", err)
+    return kong.response.exit(401, {
+      error = "invalid_token",
+      error_description = "Unable to parse JWT for single-device validation",
+    })
+  end
+
+  local user_id = payload.sub
+  local token_device_id = payload.deviceId
+  if not user_id or not token_device_id then
+    return kong.response.exit(401, {
+      error = "invalid_token",
+      error_description = "Token missing required claims for single-device validation",
+    })
+  end
+
+  local header_device_id = kong.request.get_header("x-device-id")
+  if not header_device_id or header_device_id ~= token_device_id then
+    return kong.response.exit(401, {
+      error = "device_mismatch",
+      error_description = "Request device does not match token device",
+    })
+  end
+
+  local sessions, sess_err = fetch_user_sessions(conf, user_id)
+  if not sessions then
+    kong.log.err("single-device: ", sess_err)
+    return kong.response.exit(401, {
+      error = "session_validation_failed",
+      error_description = "Unable to validate session with Keycloak",
+    })
+  end
+
+  local valid = false
+
+  for _, session in ipairs(sessions) do
+    local notes = session.notes or {}
+    local session_device_id = notes.deviceId or notes["deviceId"]
+    if session_device_id == token_device_id then
+      valid = true
+      break
+    end
+  end
+
+  if not valid then
+    return kong.response.exit(401, {
+      error = "session_invalid",
+      error_description = "No active session found for this device",
+    })
+  end
+end
+
+return SingleDeviceHandler
+
+
