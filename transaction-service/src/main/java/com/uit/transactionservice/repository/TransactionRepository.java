@@ -49,6 +49,11 @@ public interface TransactionRepository extends JpaRepository<Transaction, java.u
     java.util.Optional<Transaction> findByStripeTransferId(String stripeTransferId);
 
     /**
+     * Check if transaction exists by external transaction ID (for idempotency)
+     */
+    boolean existsByExternalTransactionId(String externalTransactionId);
+
+    /**
      * Find transactions stuck in EXTERNAL_INITIATED status for webhook timeout detection
      * Used by StripeWebhookTimeoutJob to poll Stripe API
      */

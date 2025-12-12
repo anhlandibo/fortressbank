@@ -21,6 +21,7 @@ import com.uit.transactionservice.repository.TransactionLimitRepository;
 import com.uit.transactionservice.repository.TransactionRepository;
 import com.uit.transactionservice.dto.stripe.StripeTransferRequest;
 import com.uit.transactionservice.dto.stripe.StripeTransferResponse;
+import com.uit.transactionservice.dto.SepayWebhookDto;
 import com.stripe.exception.StripeException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -50,6 +51,74 @@ public class TransactionService {
     private final AccountServiceClient accountServiceClient;
     private final StripeTransferService stripeTransferService;
     
+    /**
+     * Handle SePay webhook for Top-up (Deposit)
+     */
+    @Transactional
+    public void handleSepayTopup(SepayWebhookDto webhookData, String accountId) {
+        log.info("Processing SePay Top-up - AccountID: {} - Amount: {} - SePay Ref: {}", 
+                accountId, webhookData.getTransferAmount(), webhookData.getCode());
+
+        // 1. Idempotency check (using SePay code as unique identifier)
+        if (transactionRepository.existsByExternalTransactionId(webhookData.getCode())) {
+            log.warn("SePay transaction already processed - Ref: {}", webhookData.getCode());
+            return;
+        }
+
+        // 2. Create Transaction Record
+        String correlationId = UUID.randomUUID().toString();
+        Transaction transaction = Transaction.builder()
+                .senderAccountId("SEPAY_GATEWAY") // Virtual sender
+                .receiverAccountId(accountId)
+                .amount(webhookData.getTransferAmount())
+                .feeAmount(BigDecimal.ZERO)
+                .transactionType(TransactionType.DEPOSIT)
+                .status(TransactionStatus.PENDING)
+                .description(webhookData.getDescription())
+                .externalTransactionId(webhookData.getCode()) // Store SePay ref
+                .correlationId(correlationId)
+                .currentStep(SagaStep.STARTED)
+                .createdAt(LocalDateTime.now())
+                .build();
+        
+        transaction = transactionRepository.save(transaction);
+        log.info("Created Deposit Transaction - TxID: {}", transaction.getTransactionId());
+
+        try {
+            // 3. Credit Account (Call Account Service)
+            log.info("Crediting account {} with amount {}", accountId, webhookData.getTransferAmount());
+            
+            accountServiceClient.creditAccount(
+                    accountId,
+                    webhookData.getTransferAmount(),
+                    transaction.getTransactionId().toString(),
+                    "SePay Deposit: " + webhookData.getDescription()
+            );
+
+            // 4. Update Transaction Status to COMPLETED
+            transaction.setStatus(TransactionStatus.COMPLETED);
+            transaction.setCurrentStep(SagaStep.COMPLETED);
+            transaction.setCompletedAt(LocalDateTime.now());
+            transactionRepository.save(transaction);
+            
+            log.info("SePay Deposit Completed Successfully - TxID: {}", transaction.getTransactionId());
+            
+            // 5. Send Notification
+            sendTransactionNotification(transaction, "DepositCompleted", true);
+
+        } catch (Exception e) {
+            log.error("Failed to credit account for SePay Deposit - TxID: {}", transaction.getTransactionId(), e);
+            
+            transaction.setStatus(TransactionStatus.FAILED);
+            transaction.setCurrentStep(SagaStep.FAILED);
+            transaction.setFailureReason("Failed to credit account: " + e.getMessage());
+            transactionRepository.save(transaction);
+            
+            sendTransactionNotification(transaction, "DepositFailed", false);
+            throw new RuntimeException("Failed to process SePay deposit", e);
+        }
+    }
+
     /**
      * Create a new transfer transaction with OTP verification
      */
