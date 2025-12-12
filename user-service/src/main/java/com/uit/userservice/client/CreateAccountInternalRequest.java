@@ -12,4 +12,5 @@ import lombok.NoArgsConstructor;
 public class CreateAccountInternalRequest {
     private String accountNumberType;
     private String phoneNumber;
+    private String pin;
 }

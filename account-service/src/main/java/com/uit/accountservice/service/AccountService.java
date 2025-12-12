@@ -522,7 +522,7 @@ public class AccountService {
     @Transactional
     public AccountDto createAccount(String userId, CreateAccountRequest request) {
         String accountNumber;
-        
+
         // Determine account number based on accountNumberType
         if ("PHONE_NUMBER".equals(request.accountNumberType())) {
             // Use phone number as account number
@@ -530,7 +530,7 @@ public class AccountService {
                 throw new AppException(ErrorCode.BAD_REQUEST, "Phone number is required when accountNumberType is PHONE_NUMBER");
             }
             accountNumber = request.phoneNumber();
-            
+
             // Check if account with this phone number already exists
             if (accountRepository.findByAccountNumber(accountNumber).isPresent()) {
                 throw new AppException(ErrorCode.BAD_REQUEST, "Account with this phone number already exists");
@@ -542,11 +542,20 @@ public class AccountService {
             throw new AppException(ErrorCode.BAD_REQUEST, "Invalid accountNumberType: " + request.accountNumberType());
         }
 
+        // Validate and hash PIN if provided
+        String pinHash = null;
+        if (request.pin() != null && !request.pin().isEmpty()) {
+            validatePinFormat(request.pin());
+            pinHash = passwordEncoder.encode(request.pin());
+            log.info("PIN set for new account with number {}", accountNumber);
+        }
+
         Account account = Account.builder()
                 .userId(userId)
                 .accountNumber(accountNumber)
                 .balance(BigDecimal.ZERO)
                 .status(AccountStatus.ACTIVE)
+                .pinHash(pinHash)
                 .build();
 
         return accountMapper.toDto(accountRepository.save(account));

@@ -31,7 +31,6 @@ CREATE TABLE user_preference (
 CREATE TABLE user_device_tokens (
     user_id CHAR(36) NOT NULL,
     device_token VARCHAR(500) NOT NULL,
+    PRIMARY KEY (user_id, device_token),
     FOREIGN KEY (user_id) REFERENCES user_preference(user_id) ON DELETE CASCADE
-    email_enabled BOOLEAN NOT NULL,
-    sms_enabled BOOLEAN
 );

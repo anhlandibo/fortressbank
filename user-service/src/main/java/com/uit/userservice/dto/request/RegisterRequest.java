@@ -48,4 +48,8 @@ public class RegisterRequest {
     @NotBlank(message = "ACCOUNT_NUMBER_TYPE_REQUIRED")
     @Pattern(regexp = "^(PHONE_NUMBER|AUTO_GENERATE)$", message = "ACCOUNT_NUMBER_TYPE_INVALID")
     private String accountNumberType;
+
+    @NotBlank(message = "PIN_REQUIRED")
+    @Pattern(regexp = "^\\d{6}$", message = "PIN_MUST_BE_6_DIGITS")
+    private String pin;
 }

@@ -139,10 +139,11 @@ public class AuthServiceImpl implements AuthService {
             CreateAccountInternalRequest accountRequest = CreateAccountInternalRequest.builder()
                     .accountNumberType(request.getAccountNumberType())
                     .phoneNumber(request.getPhoneNumber())
+                    .pin(request.getPin())
                     .build();
 
             AccountDto account = accountClient.createAccountForUser(user.getId(), accountRequest).getData();
-            log.info("Account created successfully for user {} with accountNumber {}",
+            log.info("Account created successfully for user {} with accountNumber {} and PIN set",
                     user.getId(), account.getAccountNumber());
         } catch (Exception e) {
             log.error("Failed to create account for user {}: {}", user.getId(), e.getMessage(), e);
