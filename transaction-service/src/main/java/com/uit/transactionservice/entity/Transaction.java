@@ -71,28 +71,28 @@ public class Transaction {
     @Column(name = "destination_bank_code", length = 50)
     private String destinationBankCode;
 
-    // ========== Stripe Payment Gateway Fields ==========
+    // ========== Stripe Transfer Fields ==========
     
     /**
-     * Stripe payout ID returned from Stripe API
+     * Stripe transfer ID returned from Stripe API
      */
-    @Column(name = "stripe_payout_id", length = 100)
-    private String stripePayoutId;
+    @Column(name = "stripe_transfer_id", length = 100)
+    private String stripeTransferId;
 
     /**
-     * Current status of Stripe payout: pending, in_transit, paid, failed, canceled
+     * Current status of Stripe transfer: completed, failed, reversed
      */
-    @Column(name = "stripe_payout_status", length = 50)
-    private String stripePayoutStatus;
+    @Column(name = "stripe_transfer_status", length = 50)
+    private String stripeTransferStatus;
 
     /**
-     * Stripe failure code if payout failed
+     * Stripe failure code if transfer failed
      */
     @Column(name = "stripe_failure_code", length = 100)
     private String stripeFailureCode;
 
     /**
-     * Stripe failure message if payout failed
+     * Stripe failure message if transfer failed
      */
     @Column(name = "stripe_failure_message", columnDefinition = "TEXT")
     private String stripeFailureMessage;

@@ -44,6 +44,11 @@ public interface TransactionRepository extends JpaRepository<Transaction, java.u
     BigDecimal calculateMonthlyUsed(@Param("accountId") String accountId);
 
     /**
+     * Find transaction by Stripe transfer ID
+     */
+    java.util.Optional<Transaction> findByStripeTransferId(String stripeTransferId);
+
+    /**
      * Find transactions stuck in EXTERNAL_INITIATED status for webhook timeout detection
      * Used by StripeWebhookTimeoutJob to poll Stripe API
      */

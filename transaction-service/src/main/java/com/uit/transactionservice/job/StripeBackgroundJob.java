@@ -22,7 +22,7 @@ import java.util.List;
  * 
  * This component detects transactions that are stuck waiting for Stripe webhooks:
  * - Finds transactions in PENDING status for > 30 minutes without webhook confirmation
- * - Polls Stripe API directly to get actual payout status
+ * - Polls Stripe API directly to get actual transfer status
  * - Auto-completes or rolls back based on Stripe's response
  * 
  * This provides resilience when webhooks are lost or delayed
@@ -41,7 +41,7 @@ public class StripeBackgroundJob {
     /**
      * Detect webhook timeouts and poll Stripe API for actual status
      * Runs every 10 minutes to find transactions older than 30 minutes without webhook
-     * Note: Transfers are instant, so this is less critical than for Payouts
+     * Note: Transfers are instant between Stripe accounts
      */
     // @Scheduled(fixedDelay = 600000) // Every 10 minutes
     public void detectWebhookTimeouts() {
@@ -81,7 +81,7 @@ public class StripeBackgroundJob {
      */
     private void pollStripeForTransaction(Transaction transaction) {
         try {
-            String transferId = transaction.getStripePayoutId(); // Reusing field for transfer ID
+            String transferId = transaction.getStripeTransferId(); // Get transfer ID
             
             if (transferId == null || transferId.isEmpty()) {
                 log.error("Transaction {} has no Stripe transfer ID - Skipping", 
@@ -98,16 +98,16 @@ public class StripeBackgroundJob {
             if (status.getReversed() != null && status.getReversed()) {
                 log.warn("Polling detected REVERSED status - TxID: {}", transaction.getTransactionId());
                 transactionService.handleStripeTransferFailure(
-                        transaction.getTransactionId().toString(),
+                       
                         transferId,
                         "transfer_reversed",
                         "Transfer was reversed",
                         "POLLING-" + transferId
                 );
             } else {
-                // Transfer exists and not reversed, mark as success
-                log.info("Polling detected transfer exists - TxID: {}", transaction.getTransactionId());
-                transactionService.handleStripeTransferSuccess(
+                // Transfer exists and succeeded, mark as success
+                log.info("Polling detected transfer succeeded - TxID: {}", transaction.getTransactionId());
+                transactionService.handleStripeTransferCompleted(
                         transaction.getTransactionId().toString(),
                         transferId,
                         "POLLING-" + transferId
@@ -134,7 +134,7 @@ public class StripeBackgroundJob {
                     .orElse(null);
             
             if (managedTransaction != null) {
-                managedTransaction.setStripePayoutStatus(status);
+                managedTransaction.setStripeTransferStatus(status);
                 transactionRepository.save(managedTransaction);
                 log.debug("Updated transfer status to {} for TxID: {}", status, transaction.getTransactionId());
             }

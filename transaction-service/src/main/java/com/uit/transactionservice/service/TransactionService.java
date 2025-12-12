@@ -521,8 +521,8 @@ public class TransactionService {
                 StripeTransferResponse stripeResponse = stripeTransferService.createTransfer(stripeRequest);
                 
                 // Update transaction with Stripe transfer ID
-                transaction.setStripePayoutId(stripeResponse.getId()); // Reuse field for transfer ID
-                transaction.setStripePayoutStatus("completed"); // Transfers are instant
+                transaction.setStripeTransferId(stripeResponse.getId()); // Store transfer ID
+                transaction.setStripeTransferStatus("completed"); // Transfer completed
                 transaction.setCurrentStep(SagaStep.EXTERNAL_INITIATED);
                 transaction.setStatus(TransactionStatus.PENDING);
                 transaction = transactionRepository.save(transaction);
@@ -629,80 +629,86 @@ public class TransactionService {
     }
 
     /**
-     * Handle Stripe transfer success webhook
-     * Called when Stripe sends transfer.created event
+     * Handle Stripe transfer completed webhook
+     * Called when Stripe sends transfer.updated event (transfer succeeded)
+     * Uses transaction_id from transfer metadata to find transaction
      */
     @Transactional
-    public void handleStripeTransferSuccess(String transactionId, String transferId, String webhookIdempotencyKey) {
-        log.info("Received Stripe transfer success - TxID: {} - TransferID: {} - WebhookKey: {}", 
+    public void handleStripeTransferCompleted(String transactionId, String transferId, String webhookIdempotencyKey) {
+        log.info("🔔 Processing Stripe transfer completed - TxID: {} - TransferID: {} - WebhookKey: {}",
                 transactionId, transferId, webhookIdempotencyKey);
 
+        // ✅ FIND TRANSACTION BY transaction_id (UUID)
         Transaction transaction = transactionRepository.findById(UUID.fromString(transactionId))
-                .orElseThrow(() -> new RuntimeException("Transaction not found: " + transactionId));
+                .orElseThrow(() -> {
+                    log.error("❌ Transaction not found: {}", transactionId);
+                    return new RuntimeException("Transaction not found: " + transactionId);
+                });
 
-        // CRITICAL: Idempotency check using webhookIdempotencyKey (from Stripe webhook ID)
+        // Idempotency check
         if (transaction.getWebhookReceivedAt() != null && 
-            transaction.getStripePayoutStatus() != null &&
-            transaction.getStripePayoutStatus().equals("completed")) {
+            transaction.getStripeTransferStatus() != null &&
+            transaction.getStripeTransferStatus().equals("completed")) {
             log.warn("Transaction {} already processed webhook - Duplicate ignored. IdempotencyKey: {}", 
-                    transactionId, webhookIdempotencyKey);
+                    transaction.getTransactionId(), webhookIdempotencyKey);
             return;
         }
 
         // Save to Outbox table FIRST (transactional guarantee)
         try {
             Map<String, Object> payload = new HashMap<>();
-            payload.put("transactionId", transactionId);
+            payload.put("transactionId", transaction.getTransactionId().toString());
             payload.put("transferId", transferId);
             payload.put("webhookIdempotencyKey", webhookIdempotencyKey);
-            payload.put("eventType", "TRANSFER_SUCCESS");
+            payload.put("eventType", "TRANSFER_COMPLETED");
             
             String payloadJson = objectMapper.writeValueAsString(payload);
             
             OutboxEvent event = OutboxEvent.builder()
-                    .aggregateId(transactionId)
+                    .aggregateId(transaction.getTransactionId().toString())
                     .aggregateType("StripeWebhook")
-                    .eventType("TRANSFER_SUCCESS")
+                    .eventType("TRANSFER_COMPLETED")
                     .exchange("stripe.webhook")
-                    .routingKey("stripe.transfer.success")
+                    .routingKey("stripe.transfer.completed")
                     .payload(payloadJson)
                     .status(OutboxEventStatus.PENDING)
                     .retryCount(0)
                     .build();
             
             outboxEventRepository.save(event);
-            log.info("Saved TRANSFER_SUCCESS to outbox - TxID: {} - EventID: {}", transactionId, event.getEventId());
+            log.info("Saved TRANSFER_COMPLETED to outbox - TxID: {} - EventID: {}", transaction.getTransactionId(), event.getEventId());
             
             // Process immediately (best effort)
-            processTransferSuccessEvent(transaction, transferId, webhookIdempotencyKey);
+            processTransferCompletedEvent(transaction, webhookIdempotencyKey);
             
         } catch (Exception e) {
-            log.error("Failed to save webhook event to outbox - TxID: {}", transactionId, e);
+            log.error("Failed to save webhook event to outbox - TxID: {}", transaction.getTransactionId(), e);
             throw new RuntimeException("Failed to handle webhook", e);
         }
     }
     
     /**
-     * Process transfer success event
+     * Process transfer completed event (transfer succeeded)
      */
     @Transactional
-    public void processTransferSuccessEvent(Transaction transaction, String transferId, String webhookIdempotencyKey) {
+    public void processTransferCompletedEvent(Transaction transaction, String webhookIdempotencyKey) {
         // Double-check idempotency
-        if (transaction.getStatus() == TransactionStatus.SUCCESS) {
-            log.warn("Transaction {} already SUCCESS - Skipping", transaction.getTransactionId());
+        if (transaction.getStatus() == TransactionStatus.COMPLETED) {
+            log.warn("Transaction {} already COMPLETED - Skipping", transaction.getTransactionId());
             return;
         }
 
-        // Update transaction to SUCCESS
-        transaction.setStatus(TransactionStatus.SUCCESS);
+        // Update transaction to COMPLETED
+        transaction.setStatus(TransactionStatus.COMPLETED);
         transaction.setCurrentStep(SagaStep.COMPLETED);
-        transaction.setStripePayoutStatus("completed");
-        transaction.setStripePayoutId(transferId);
+        transaction.setStripeTransferStatus("completed");
         transaction.setWebhookReceivedAt(LocalDateTime.now());
         transaction.setCompletedAt(LocalDateTime.now());
         transactionRepository.save(transaction);
 
-        log.info("Stripe transfer completed successfully - TxID: {}", transaction.getTransactionId());
+        log.info("✅ Transaction COMPLETED - Transfer succeeded - TxID: {} - TransferID: {}", 
+                transaction.getTransactionId(), transaction.getStripeTransferId());
+        
         sendTransactionNotification(transaction, "TransactionCompleted", true);
     }
 
@@ -711,26 +717,26 @@ public class TransactionService {
      * Called when Stripe sends transfer.failed or transfer.reversed event
      */
     @Transactional
-    public void handleStripeTransferFailure(String transactionId, String transferId, String failureCode, 
+    public void handleStripeTransferFailure(String transferId, String failureCode, 
                                          String failureMessage, String webhookIdempotencyKey) {
-        log.warn("Received Stripe transfer failure - TxID: {} - TransferID: {} - Reason: {} - WebhookKey: {}",
-                transactionId, transferId, failureMessage, webhookIdempotencyKey);
+        log.warn("Received Stripe transfer failure - TransferID: {} - Reason: {} - WebhookKey: {}",
+                transferId, failureMessage, webhookIdempotencyKey);
 
-        Transaction transaction = transactionRepository.findById(UUID.fromString(transactionId))
-                .orElseThrow(() -> new RuntimeException("Transaction not found: " + transactionId));
+        Transaction transaction = transactionRepository.findByStripeTransferId(transferId)
+                .orElseThrow(() -> new RuntimeException("Transaction not found for transfer: " + transferId));
 
         // Idempotency check
         if (transaction.getWebhookReceivedAt() != null &&
             (transaction.getStatus() == TransactionStatus.FAILED ||
              transaction.getStatus() == TransactionStatus.ROLLBACK_COMPLETED)) {
-            log.warn("Transaction {} already processed failure webhook - Duplicate ignored", transactionId);
+            log.warn("Transaction {} already processed failure webhook - Duplicate ignored", transaction.getTransactionId());
             return;
         }
 
         // Save to Outbox FIRST
         try {
             Map<String, Object> payload = new HashMap<>();
-            payload.put("transactionId", transactionId);
+            payload.put("transactionId", transaction.getTransactionId().toString());
             payload.put("transferId", transferId);
             payload.put("failureCode", failureCode);
             payload.put("failureMessage", failureMessage);
@@ -740,7 +746,7 @@ public class TransactionService {
             String payloadJson = objectMapper.writeValueAsString(payload);
             
             OutboxEvent event = OutboxEvent.builder()
-                    .aggregateId(transactionId)
+                    .aggregateId(transaction.getTransactionId().toString())
                     .aggregateType("StripeWebhook")
                     .eventType("TRANSFER_FAILURE")
                     .exchange("stripe.webhook")
@@ -751,13 +757,13 @@ public class TransactionService {
                     .build();
             
             outboxEventRepository.save(event);
-            log.info("Saved TRANSFER_FAILURE to outbox - TxID: {} - EventID: {}", transactionId, event.getEventId());
+            log.info("Saved TRANSFER_FAILURE to outbox - TxID: {} - EventID: {}", transaction.getTransactionId(), event.getEventId());
             
             // Process immediately (best effort)
             processTransferFailureEvent(transaction, transferId, failureCode, failureMessage);
             
         } catch (Exception e) {
-            log.error("Failed to save webhook event to outbox - TxID: {}", transactionId, e);
+            log.error("Failed to save webhook event to outbox - TxID: {}", transaction.getTransactionId(), e);
             throw new RuntimeException("Failed to handle webhook", e);
         }
     }
@@ -775,8 +781,8 @@ public class TransactionService {
             return;
         }
 
-        transaction.setStripePayoutStatus("failed");
-        transaction.setStripePayoutId(transferId);
+        transaction.setStripeTransferStatus("failed");
+        transaction.setStripeTransferId(transferId);
         transaction.setStripeFailureCode(failureCode);
         transaction.setStripeFailureMessage(failureMessage);
         transaction.setWebhookReceivedAt(LocalDateTime.now());
