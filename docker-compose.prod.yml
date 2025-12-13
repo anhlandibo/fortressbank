@@ -1,0 +1,339 @@
+# =============================================================================
+# FORTRESSBANK - PRODUCTION SECURITY OVERLAY
+# =============================================================================
+# 
+# USAGE:
+#   docker compose -f docker-compose.base.yml \
+#                  -f docker-compose.infra.yml \
+#                  -f docker-compose.services.yml \
+#                  -f docker-compose.prod.yml \
+#                  --env-file .env.prod up -d
+#
+# REQUIRED: Create .env.prod with production secrets before deployment
+#           See .env.prod.template for required variables
+#
+# SECURITY HARDENING APPLIED:
+#   1. No database ports exposed to host (internal network only)
+#   2. No admin ports exposed (Kong admin, RabbitMQ management)
+#   3. Secrets via environment variables (not hardcoded)
+#   4. Keycloak in production mode with proper hostname
+#   5. Redis with authentication
+#   6. Container security options (read-only, no-new-privileges)
+#   7. Resource limits to prevent DoS
+#   8. Health checks with appropriate timeouts
+#
+# =============================================================================
+
+services:
+  # ===========================================================================
+  # DATABASE HARDENING - No host port exposure, secrets via env vars
+  # ===========================================================================
+  
+  user-service-db:
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${USER_DB_NAME}
+    ports: !reset []  # Remove all port mappings
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          memory: 256M
+    security_opt:
+      - no-new-privileges:true
+    # Production: enable SSL connections
+    # command: postgres -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key
+
+  account-service-db:
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${ACCOUNT_DB_NAME}
+    ports: !reset []
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          memory: 256M
+    security_opt:
+      - no-new-privileges:true
+
+  transaction-service-db:
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${TRANSACTION_DB_NAME}
+    ports: !reset []
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          memory: 256M
+    security_opt:
+      - no-new-privileges:true
+
+  keycloak-db:
+    environment:
+      POSTGRES_USER: ${KEYCLOAK_DB_USER}
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      POSTGRES_DB: keycloak
+    ports: !reset []
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+    security_opt:
+      - no-new-privileges:true
+
+  # ===========================================================================
+  # REDIS HARDENING - Authentication required, no host exposure
+  # ===========================================================================
+  
+  redis:
+    command: redis-server --requirepass ${REDIS_PASSWORD} --maxmemory 256mb --maxmemory-policy allkeys-lru
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    ports: !reset []
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 300M
+    security_opt:
+      - no-new-privileges:true
+
+  # ===========================================================================
+  # RABBITMQ HARDENING - Strong credentials, no management UI exposed
+  # ===========================================================================
+  
+  rabbitmq:
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      # Disable guest user entirely
+      RABBITMQ_DEFAULT_VHOST: fortressbank
+    ports:
+      # Only AMQP port, no management UI exposed
+      - "5672:5672"
+      # Management UI NOT exposed - use SSH tunnel if needed
+      # - "15672:15672"
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+    security_opt:
+      - no-new-privileges:true
+
+  # ===========================================================================
+  # KEYCLOAK HARDENING - Production mode, proper hostname, brute force protection
+  # ===========================================================================
+  
+  keycloak:
+    command:
+      - start
+      - --import-realm
+      - --health-enabled=true
+      - --hostname=${KEYCLOAK_HOSTNAME}
+      - --hostname-strict=true
+      - --http-enabled=false
+      - --https-certificate-file=/opt/keycloak/conf/server.crt.pem
+      - --https-certificate-key-file=/opt/keycloak/conf/server.key.pem
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USER}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KC_DB: postgres
+      KC_DB_URL_HOST: keycloak-db
+      KC_DB_URL_DATABASE: keycloak
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      KC_HOSTNAME: ${KEYCLOAK_HOSTNAME}
+      KC_PROXY: edge
+      KC_HOSTNAME_STRICT: "true"
+      KC_HOSTNAME_STRICT_HTTPS: "true"
+      # Production optimizations
+      KC_CACHE: ispn
+      KC_CACHE_STACK: kubernetes
+      # Metrics for monitoring
+      KC_METRICS_ENABLED: "true"
+    ports:
+      - "8443:8443"
+      # HTTP disabled in production
+      # - "8888:8080"
+    volumes:
+      - ./keycloak/realms:/opt/keycloak/data/import:ro
+      - ./keycloak/certs:/opt/keycloak/conf:ro
+      - ./keycloak-extensions/target/keycloak-extensions-1.0.0.jar:/opt/keycloak/providers/keycloak-extensions-1.0.0.jar:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          memory: 512M
+    security_opt:
+      - no-new-privileges:true
+
+  # ===========================================================================
+  # KONG HARDENING - Admin API localhost only, proper rate limiting
+  # ===========================================================================
+  
+  kong:
+    environment:
+      KONG_DATABASE: "off"
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      # HTTPS proxy with proper certificates
+      KONG_PROXY_LISTEN: "0.0.0.0:8443 ssl"
+      KONG_SSL_CERT: /etc/kong/certs/server.crt
+      KONG_SSL_CERT_KEY: /etc/kong/certs/server.key
+      # Admin API on localhost only - not accessible from outside
+      KONG_ADMIN_LISTEN: "127.0.0.1:8001"
+      KONG_PLUGINS: "bundled,openid-connect"
+      KONG_DECLARATIVE_CONFIG: /usr/local/kong/declarative/kong.yml
+      KONG_LOG_LEVEL: warn
+      # Redis for distributed rate limiting
+      KONG_REDIS_HOST: redis
+      KONG_REDIS_PORT: 6379
+      KONG_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      # Trusted IPs for X-Forwarded-For (configure for your load balancer)
+      KONG_TRUSTED_IPS: ${TRUSTED_PROXY_IPS:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+      KONG_REAL_IP_HEADER: X-Forwarded-For
+      KONG_REAL_IP_RECURSIVE: "on"
+    ports:
+      - "443:8443"
+      # Admin NOT exposed - access via: docker exec fortressbank-kong curl http://127.0.0.1:8001
+    volumes:
+      - ./kong/kong.prod.yml:/usr/local/kong/declarative/kong.yml:ro
+      - ./kong/certs:/etc/kong/certs:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 512M
+        reservations:
+          memory: 256M
+    security_opt:
+      - no-new-privileges:true
+
+  # ===========================================================================
+  # APPLICATION SERVICES - Secrets via env, resource limits
+  # ===========================================================================
+  
+  user-service:
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://user-service-db:5432/${USER_DB_NAME}
+      SPRING_DATASOURCE_USERNAME: ${DB_USER}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      JWT_ISSUER_URI: https://${KEYCLOAK_HOSTNAME}/realms/fortressbank-realm
+    ports: !reset []  # No direct access - all traffic via Kong
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          memory: 256M
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  account-service:
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://account-service-db:5432/${ACCOUNT_DB_NAME}
+      SPRING_DATASOURCE_USERNAME: ${DB_USER}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      JWT_ISSUER_URI: https://${KEYCLOAK_HOSTNAME}/realms/fortressbank-realm
+    ports: !reset []
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          memory: 256M
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  transaction-service:
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://transaction-service-db:5432/${TRANSACTION_DB_NAME}
+      SPRING_DATASOURCE_USERNAME: ${DB_USER}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      JWT_ISSUER_URI: https://${KEYCLOAK_HOSTNAME}/realms/fortressbank-realm
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      SPRING_RABBITMQ_VIRTUAL_HOST: fortressbank
+    ports: !reset []
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          memory: 256M
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  notification-service:
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+    ports: !reset []
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 384M
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  discovery:
+    ports: !reset []  # Internal only
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 384M
+    security_opt:
+      - no-new-privileges:true
+
+  config-server:
+    ports: !reset []  # Internal only
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 384M
+    security_opt:
+      - no-new-privileges:true

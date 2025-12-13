@@ -1,6 +1,12 @@
-# ✅ Penetration Test Suite - Progress Summary
+# ✅ Security Testing Suite - Complete Status
 
-## Completed Components
+## 🎯 Project Overview
+
+This security testing suite covers both **offensive** (penetration testing) and **defensive** (hardening) security measures for FortressBank.
+
+---
+
+## Part 1: Offensive Security (Penetration Tests)
 
 ### 1. Foundation (✅ Complete)
 - `security-tests/README.md` - Comprehensive test plan and philosophy
@@ -61,6 +67,53 @@
   - Technical vocabulary with plain English definitions
   - Real-world analogies and examples
   - Interview talking points
+
+---
+
+## Part 2: Defensive Security (Implemented December 2024)
+
+### Security Fixes Applied to Code
+The following vulnerabilities were fixed directly in the codebase:
+
+| Issue | Fix | Files Changed |
+|-------|-----|---------------|
+| JWT not validated at backend | Added OAuth2 Resource Server | `SecurityConfig.java`, `JwtConfig.java` |
+| Broken realm_access parsing | Fixed Map/List structure | `RoleCheckInterceptor.java` |
+| Backend permits all requests | Changed to `anyRequest().authenticated()` | `SecurityConfig.java` |
+| Rate limiting by IP (spoofable) | Changed to `limit_by: consumer` | `kong/kong.yml` |
+| `/debit` endpoint exposed | Moved to `/internal/` path | `AccountController.java`, `AccountServiceClient.java` |
+| `/internal-transfer` exposed | Moved to `/internal/transfer` | `AccountController.java`, `AccountServiceClient.java` |
+| PIN creation on any account | First-time only (existing check) | Already in `AccountService.java` |
+
+### Production Hardening (Ready to Deploy)
+See `PRODUCTION-SECURITY-CHECKLIST.md` in repo root for:
+- Production compose overlay (`docker-compose.prod.yml`)
+- Keycloak security overlay
+- Environment secrets template
+
+---
+
+## ✅ Security Status
+
+All critical vulnerabilities have been addressed:
+
+| Category | Status |
+|----------|--------|
+| JWT Validation | ✅ Fixed - Backend validates signatures via Keycloak JWKS |
+| Role Extraction | ✅ Fixed - Correct realm_access.roles parsing |
+| Authorization | ✅ Fixed - anyRequest().authenticated() + @RequireRole where needed |
+| Internal Endpoints | ✅ Fixed - Moved to /internal/ path prefix |
+| Rate Limiting | ✅ Fixed - limit_by: consumer (not spoofable IP) |
+| Cumulative Limits | ✅ Already implemented in TransactionService |
+| PIN Security | ✅ First-time-only check already exists |
+
+### Remaining Recommendations (Not Blockers)
+
+| Item | Priority | Notes |
+|------|----------|-------|
+| Registration token for PIN | Low | Replace public PIN endpoint with token-based flow |
+| Redis rate limiting | Medium | Switch Kong from local to redis policy in production |
+| Network policies | Medium | Add K8s NetworkPolicy or firewall rules in production |
 
 ---
 

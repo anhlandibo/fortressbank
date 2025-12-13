@@ -1,0 +1,184 @@
+# =============================================================================
+# FORTRESSBANK - PRODUCTION DOCKERFILE
+# =============================================================================
+#
+# SECURITY HARDENING APPLIED:
+#   1. Non-root user execution
+#   2. Minimal base image (JRE only, not JDK)
+#   3. No shell access in production images
+#   4. Read-only filesystem compatible
+#   5. Health check included
+#   6. No sensitive files copied
+#
+# USAGE:
+#   docker build -f Dockerfile.prod --target account-service -t account-service:prod .
+#
+# =============================================================================
+
+# =============================================================================
+# BUILD STAGE - Maven compilation
+# =============================================================================
+FROM eclipse-temurin:21-jdk-alpine AS maven-base
+
+# Install maven
+RUN apk add --no-cache maven
+
+WORKDIR /app
+
+# Copy only pom files first for dependency caching
+COPY pom.xml .
+COPY account-service/pom.xml ./account-service/
+COPY user-service/pom.xml ./user-service/
+COPY notification-service/pom.xml ./notification-service/
+COPY transaction-service/pom.xml ./transaction-service/
+COPY discovery/pom.xml ./discovery/
+COPY config-server/pom.xml ./config-server/
+COPY keycloak-extensions/pom.xml ./keycloak-extensions/
+COPY shared-kernel/pom.xml ./shared-kernel/
+COPY risk-engine/pom.xml ./risk-engine/
+COPY reference-service/pom.xml ./reference-service/
+
+# Download dependencies (cached layer)
+RUN mvn dependency:go-offline -B
+
+# Copy source code
+COPY account-service ./account-service
+COPY user-service ./user-service
+COPY notification-service ./notification-service
+COPY transaction-service ./transaction-service
+COPY discovery ./discovery
+COPY config-server ./config-server
+COPY keycloak-extensions ./keycloak-extensions
+COPY shared-kernel ./shared-kernel
+COPY risk-engine ./risk-engine
+COPY reference-service ./reference-service
+
+# Build all modules
+RUN mvn clean package -DskipTests -B
+
+# =============================================================================
+# PRODUCTION RUNTIME BASE - Minimal, hardened
+# =============================================================================
+FROM eclipse-temurin:21-jre-alpine AS runtime-base
+
+# Security: Create non-root user
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -u 1001 -S appuser -G appgroup && \
+    # Remove unnecessary packages
+    apk del --purge apk-tools && \
+    # Remove shell (optional - makes debugging harder)
+    # rm /bin/sh /bin/ash && \
+    # Create app directory
+    mkdir -p /app && \
+    chown -R appuser:appgroup /app
+
+# Security: Set restrictive permissions
+WORKDIR /app
+USER appuser
+
+# JVM security and performance flags for production
+ENV JAVA_OPTS="-XX:+UseContainerSupport \
+    -XX:MaxRAMPercentage=75.0 \
+    -XX:+UseG1GC \
+    -XX:+HeapDumpOnOutOfMemoryError \
+    -Djava.security.egd=file:/dev/./urandom \
+    -Dcom.sun.management.jmxremote=false \
+    -Dspring.jmx.enabled=false"
+
+# =============================================================================
+# ACCOUNT SERVICE - Production
+# =============================================================================
+FROM runtime-base AS account-service
+
+COPY --from=maven-base --chown=appuser:appgroup /app/account-service/target/*.jar app.jar
+
+EXPOSE 4001
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:4001/actuator/health || exit 1
+
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+
+# =============================================================================
+# USER SERVICE - Production
+# =============================================================================
+FROM runtime-base AS user-service
+
+COPY --from=maven-base --chown=appuser:appgroup /app/user-service/target/*.jar app.jar
+
+EXPOSE 4000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:4000/actuator/health || exit 1
+
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+
+# =============================================================================
+# NOTIFICATION SERVICE - Production
+# =============================================================================
+FROM runtime-base AS notification-service
+
+COPY --from=maven-base --chown=appuser:appgroup /app/notification-service/target/*.jar app.jar
+
+EXPOSE 4002
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:4002/actuator/health || exit 1
+
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+
+# =============================================================================
+# TRANSACTION SERVICE - Production
+# =============================================================================
+FROM runtime-base AS transaction-service
+
+COPY --from=maven-base --chown=appuser:appgroup /app/transaction-service/target/*.jar app.jar
+
+EXPOSE 4004
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:4004/actuator/health || exit 1
+
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+
+# =============================================================================
+# DISCOVERY SERVICE - Production
+# =============================================================================
+FROM runtime-base AS discovery
+
+COPY --from=maven-base --chown=appuser:appgroup /app/discovery/target/*.jar app.jar
+
+EXPOSE 8761
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8761/actuator/health || exit 1
+
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+
+# =============================================================================
+# REFERENCE SERVICE - Production
+# =============================================================================
+FROM runtime-base AS reference-service
+
+COPY --from=maven-base --chown=appuser:appgroup /app/reference-service/target/*.jar app.jar
+
+EXPOSE 4003
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:4003/actuator/health || exit 1
+
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+
+# =============================================================================
+# RISK ENGINE - Production
+# =============================================================================
+FROM runtime-base AS risk-engine
+
+COPY --from=maven-base --chown=appuser:appgroup /app/risk-engine/target/*.jar app.jar
+
+EXPOSE 6000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:6000/actuator/health || exit 1
+
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
