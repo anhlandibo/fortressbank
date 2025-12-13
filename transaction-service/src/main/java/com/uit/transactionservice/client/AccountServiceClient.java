@@ -38,9 +38,11 @@ public class AccountServiceClient {
     /**
      * Debit (subtract) amount from an account
      * This is a synchronous blocking call with timeout
+     * 
+     * SECURITY FIX (2024-12): Updated to use /internal/ path - service-to-service only
      */
     public AccountBalanceResponse debitAccount(String accountId, BigDecimal amount, String transactionId, String description) {
-        String url = accountServiceUrl + "/accounts/" + accountId + "/debit";
+        String url = accountServiceUrl + "/accounts/internal/" + accountId + "/debit";
         
         AccountBalanceRequest request = AccountBalanceRequest.builder()
                 .accountId(accountId)
@@ -179,6 +181,8 @@ public class AccountServiceClient {
      * Execute internal transfer atomically (RECOMMENDED).
      * Both debit and credit happen in a single database transaction.
      * Either both succeed or both fail - no partial state.
+     * 
+     * SECURITY FIX (2024-12): Updated to use /internal/ path - service-to-service only
      */
     public InternalTransferResponse executeInternalTransfer(
             String fromAccountId,
@@ -187,7 +191,7 @@ public class AccountServiceClient {
             String transactionId,
             String description) {
         
-        String url = accountServiceUrl + "/accounts/internal-transfer";
+        String url = accountServiceUrl + "/accounts/internal/transfer";
         
         InternalTransferRequest request = InternalTransferRequest.builder()
                 .transactionId(transactionId)
