@@ -7,9 +7,9 @@ import lombok.Data;
 @Builder
 public class CardDto {
     private String cardId;
-    private String cardNumber; // Chỉ hiện: **** **** **** 1234
+    private String cardNumber; 
     private String cardHolderName;
-    private String expirationDate; // MM/yy
+    private String expirationDate;
     private String status;
     private String cardType;
 }

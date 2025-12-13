@@ -4,5 +4,5 @@ public record BeneficiaryRequest(
         String accountNumber,
         String accountName,
         String bankName,
-        String nickname
+        String nickName  
 ) {}

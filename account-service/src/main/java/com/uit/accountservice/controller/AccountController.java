@@ -195,7 +195,16 @@ public class AccountController {
         List<AccountDto> accounts = accountService.getMyAccounts(getCurrentUserId());
         return ResponseEntity.ok(ApiResponse.success(accounts));
     }
-    
+
+    // GET /accounts/lookup?accountNumber=xxx
+    // Used to check if an account exists before initiating a transfer
+    @GetMapping("/lookup")
+    public ResponseEntity<ApiResponse<AccountDto>> lookupAccountByAccountNumber(
+            @RequestParam("accountNumber") String accountNumber) {
+        AccountDto account = accountService.getAccountByAccountNumber(accountNumber);
+        return ResponseEntity.ok(ApiResponse.success(account));
+    }
+
    @GetMapping("/{accountId}")
     public ResponseEntity<ApiResponse<AccountDto>> getAccountDetail(@PathVariable("accountId") String accountId) {
         AccountDto account = accountService.getAccountDetail(accountId, getCurrentUserId());

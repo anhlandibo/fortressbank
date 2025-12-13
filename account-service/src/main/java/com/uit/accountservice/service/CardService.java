@@ -2,7 +2,6 @@ package com.uit.accountservice.service;
 
 import com.uit.accountservice.client.UserClient;
 import com.uit.accountservice.dto.CardDto;
-import com.uit.accountservice.dto.request.IssueCardRequest;
 import com.uit.accountservice.dto.response.UserResponse;
 import com.uit.accountservice.entity.Account;
 import com.uit.accountservice.entity.Card;
@@ -41,38 +40,42 @@ public class CardService {
                 .collect(Collectors.toList());
     }
 
-    // PHÁT HÀNH THẺ MỚI
-    public CardDto issueCard(String userId, IssueCardRequest request){
-        Account account = validateAccountOwnership(request.accountId(), userId);
+    // PHÁT HÀNH THẺ MỚI (Card type is always VIRTUAL)
+    public CardDto issueCard(String userId, String accountId){
+        Account account = validateAccountOwnership(accountId, userId);
 
         String cardHolderName = "UNKNOWN";
         try {
             ApiResponse<UserResponse> response = userClient.getUserById(userId);
-            if (response != null && response.getData() != null) {
+            if (response != null && response.getData() != null && response.getData().fullName() != null) {
                 // Tên trên thẻ thường viết hoa không dấu
                 cardHolderName = response.getData().fullName().toUpperCase();
+            } else {
+                log.warn("User fullName is null for userId: {}. Using default cardHolderName.", userId);
             }
         } catch (Exception e) {
             // Fallback: Nếu gọi user-service lỗi, có thể lấy từ Token hoặc để default
-            log.error("Failed to fetch user info for card issuance", e);
+            log.error("Failed to fetch user info for card issuance for userId: {}. Error: {}", userId, e.getMessage());
         }
         String cardNumber = generateLuhnCardNumber();
         String cvv = generateRandomDigits(3);
 
-        log.info("ISSUING CARD - User: {}, CVV: {}", userId, cvv);
+        log.info("ISSUING CARD - User: {}, AccountId: {}, CVV: {}", userId, accountId, cvv);
         LocalDate expiryDate = LocalDate.now().plusYears(5); // Hết hạn sau 5 năm
 
         Card card = Card.builder()
                 .accountId(account.getAccountId())
                 .cardNumber(cardNumber)
-                .cardHolderName(cardHolderName) 
+                .cardHolderName(cardHolderName)
                 .cvvHash(passwordEncoder.encode(cvv)) // Hash CVV
                 .expirationDate(expiryDate)
-                .cardType(CardType.valueOf(request.cardType().toUpperCase()))
+                .cardType(CardType.VIRTUAL)  // Always VIRTUAL by default
                 .status(CardStatus.ACTIVE)
                 .build();
 
         cardRepository.save(card);
+
+        log.info("VIRTUAL card issued successfully - CardNumber: {} (masked)", maskCardNumber(cardNumber));
 
         return toDto(card);
     }

@@ -1,6 +1,7 @@
 package com.uit.accountservice.controller;
 
 import com.uit.accountservice.dto.request.BeneficiaryRequest;
+import com.uit.accountservice.dto.request.BeneficiaryUpdateRequest;
 import com.uit.accountservice.entity.Beneficiary;
 import com.uit.accountservice.service.BeneficiaryService;
 import lombok.RequiredArgsConstructor;
@@ -34,9 +35,18 @@ public class BeneficiaryController {
                 .body(beneficiaryService.addBeneficiary(getCurrentUserId(), request));
     }
 
+    // PUT /beneficiaries/{beneficiaryId}
+    @PutMapping("/{beneficiaryId}")
+    public ResponseEntity<Beneficiary> updateBeneficiary(
+            @PathVariable Long beneficiaryId,
+            @RequestBody BeneficiaryUpdateRequest request) {
+        return ResponseEntity.ok(
+                beneficiaryService.updateBeneficiary(beneficiaryId, getCurrentUserId(), request));
+    }
+
     // DELETE /beneficiaries/{beneficiaryId}
     @DeleteMapping("/{beneficiaryId}")
-    public ResponseEntity<Void> deleteBeneficiary(@PathVariable Long beneficiaryId) {
+    public ResponseEntity<Void> deleteBeneficiary(@PathVariable("beneficiaryId") Long beneficiaryId) {
         beneficiaryService.deleteBeneficiary(beneficiaryId, getCurrentUserId());
         return ResponseEntity.noContent().build();
     }

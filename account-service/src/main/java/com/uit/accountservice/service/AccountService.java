@@ -1,5 +1,6 @@
 package com.uit.accountservice.service;
 
+import com.uit.accountservice.client.UserClient;
 import com.uit.accountservice.dto.AccountDto;
 import com.uit.accountservice.dto.PendingTransfer;
 import com.uit.accountservice.dto.request.CreateAccountRequest;
@@ -7,6 +8,7 @@ import com.uit.accountservice.dto.request.SendSmsOtpRequest;
 import com.uit.accountservice.dto.request.TransferRequest;
 import com.uit.accountservice.dto.request.VerifyTransferRequest;
 import com.uit.accountservice.dto.response.ChallengeResponse;
+import com.uit.accountservice.dto.response.UserResponse;
 import com.uit.accountservice.entity.Account;
 import com.uit.accountservice.entity.enums.AccountStatus;
 import com.uit.accountservice.entity.enums.TransferStatus;
@@ -15,6 +17,7 @@ import com.uit.accountservice.repository.AccountRepository;
 import com.uit.accountservice.riskengine.RiskEngineService;
 import com.uit.accountservice.riskengine.dto.RiskAssessmentRequest;
 import com.uit.accountservice.riskengine.dto.RiskAssessmentResponse;
+import com.uit.sharedkernel.api.ApiResponse;
 import com.uit.sharedkernel.exception.AppException;
 import com.uit.sharedkernel.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -34,7 +37,7 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-@Slf4j  
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AccountService {
@@ -49,6 +52,7 @@ public class AccountService {
     private final WebClient.Builder webClientBuilder;
     private final TransferAuditService auditService;
     private final PasswordEncoder passwordEncoder;
+    private final UserClient userClient;
 
     public List<AccountDto> getAccountsByUserId(String userId) {
         return accountRepository.findByUserId(userId)
@@ -509,6 +513,26 @@ public class AccountService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Get account by account number (for lookup during transfer)
+     * This endpoint is used to check if an account exists before initiating a transfer
+     * @param accountNumber The account number to lookup
+     * @return AccountDto with account information (without sensitive data)
+     */
+    public AccountDto getAccountByAccountNumber(String accountNumber) {
+        Account account = accountRepository.findByAccountNumber(accountNumber)
+                .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND,
+                    "Account not found with account number: " + accountNumber));
+
+        // Only return active accounts for transfers
+        if (account.getStatus() == AccountStatus.CLOSED) {
+            throw new AppException(ErrorCode.ACCOUNT_STATUS_CONFLICT,
+                "This account has been closed and cannot receive transfers");
+        }
+
+        return accountMapper.toDto(account);
+    }
+
     public AccountDto getAccountDetail(String accountId, String userId) {
         Account account = getAccountOwnedByUser(accountId, userId);
         return accountMapper.toDto(account);
@@ -525,21 +549,37 @@ public class AccountService {
 
         // Determine account number based on accountNumberType
         if ("PHONE_NUMBER".equals(request.accountNumberType())) {
-            // Use phone number as account number
-            if (request.phoneNumber() == null || request.phoneNumber().isEmpty()) {
-                throw new AppException(ErrorCode.BAD_REQUEST, "Phone number is required when accountNumberType is PHONE_NUMBER");
-            }
-            accountNumber = request.phoneNumber();
+            // Auto-fetch phone number from user-service
+            String phoneNumber = fetchPhoneNumberFromUserService(userId);
 
-            // Check if account with this phone number already exists
-            if (accountRepository.findByAccountNumber(accountNumber).isPresent()) {
-                throw new AppException(ErrorCode.BAD_REQUEST, "Account with this phone number already exists");
+            if (phoneNumber == null || phoneNumber.isEmpty()) {
+                throw new AppException(ErrorCode.BAD_REQUEST,
+                    "User does not have a phone number registered. Please update your profile first or use AUTO_GENERATE.");
             }
+
+            accountNumber = phoneNumber;
+
+            // Check if account with this phone number already exists (globally)
+            if (accountRepository.findByAccountNumber(accountNumber).isPresent()) {
+                throw new AppException(ErrorCode.BAD_REQUEST,
+                    "An account with your phone number already exists. Each phone number can only be used once.");
+            }
+
         } else if ("AUTO_GENERATE".equals(request.accountNumberType())) {
             // Generate unique account number
             accountNumber = generateUniqueAccountNumber();
+
         } else {
             throw new AppException(ErrorCode.BAD_REQUEST, "Invalid accountNumberType: " + request.accountNumberType());
+        }
+
+        // Additional check: User cannot create duplicate accounts with same account number
+        boolean userAlreadyHasThisAccountNumber = accountRepository.findByUserId(userId).stream()
+                .anyMatch(account -> account.getAccountNumber().equals(accountNumber));
+
+        if (userAlreadyHasThisAccountNumber) {
+            throw new AppException(ErrorCode.BAD_REQUEST,
+                "You already have an account with this account number: " + accountNumber);
         }
 
         // Validate and hash PIN if provided
@@ -558,7 +598,30 @@ public class AccountService {
                 .pinHash(pinHash)
                 .build();
 
+        log.info("Account created successfully - UserId: {} - AccountNumber: {} - Type: {}",
+                userId, accountNumber, request.accountNumberType());
+
         return accountMapper.toDto(accountRepository.save(account));
+    }
+
+    /**
+     * Fetch phone number from user-service for the given userId
+     * @param userId The user ID
+     * @return Phone number or null if not found
+     */
+    private String fetchPhoneNumberFromUserService(String userId) {
+        try {
+            ApiResponse<UserResponse> response = userClient.getUserById(userId);
+            if (response != null && response.getData() != null && response.getData().phoneNumber() != null) {
+                return response.getData().phoneNumber();
+            }
+        } catch (Exception e) {
+            log.error("Failed to fetch user phone number from user-service for userId: {}. Error: {}",
+                    userId, e.getMessage());
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION,
+                "Failed to retrieve user information. Please try again later.");
+        }
+        return null;
     }
 
     @Transactional
