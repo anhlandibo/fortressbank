@@ -46,10 +46,6 @@ public class TransactionController {
             HttpServletRequest httpRequest) {
 
         try {
-            log.info("=== CREATE TRANSFER REQUEST ===");
-            log.info("Request body: {}", request);
-            
-            // Get user info from JWT token (if available)
             @SuppressWarnings("unchecked")
             Map<String, Object> userInfo = (Map<String, Object>) httpRequest.getAttribute("userInfo");
             String userId = "test-user"; // Default for testing

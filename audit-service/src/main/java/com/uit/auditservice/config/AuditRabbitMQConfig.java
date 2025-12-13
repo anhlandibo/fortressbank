@@ -7,7 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-public class RabbitMQConfig {
+public class AuditRabbitMQConfig {
 
     @Value("${rabbitmq.exchange.audit:" + RabbitMQConstants.AUDIT_EXCHANGE + "}")
     private String auditExchange;

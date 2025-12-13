@@ -29,14 +29,11 @@ public class SepayWebhookController {
             log.error("Failed to log webhook payload", e);
         }
 
-        // 1. Validate Transfer Type
         if (!"in".equalsIgnoreCase(webhookDto.getTransferType())) {
             log.info("Ignoring outgoing transfer webhook from SePay: {}", webhookDto.getCode());
             return ResponseEntity.ok("Ignored outgoing transfer");
         }
 
-        // 2. Extract Account ID from content
-        // Pattern: FB<UUID> -> Extract UUID
         String content = webhookDto.getContent();
         String accountId = extractAccountId(content);
 
@@ -45,7 +42,6 @@ public class SepayWebhookController {
             return ResponseEntity.badRequest().body("Invalid content format. Expected FB<AccountId>");
         }
 
-        // 3. Process Top-up
         try {
             transactionService.handleSepayTopup(webhookDto, accountId);
             return ResponseEntity.ok("Webhook processed successfully");
@@ -58,8 +54,6 @@ public class SepayWebhookController {
     private String extractAccountId(String content) {
         if (content == null) return null;
         
-        // Match "FB" followed by exactly 36 characters (UUID length)
-        // Example: ...FBa1b2c3d4-e5f6-7890-1234-567890abcdef...
         Pattern pattern = Pattern.compile("FB([a-zA-Z0-9-]{36})");
         Matcher matcher = pattern.matcher(content);
         

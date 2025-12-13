@@ -48,9 +48,6 @@ public interface TransactionRepository extends JpaRepository<Transaction, java.u
      */
     java.util.Optional<Transaction> findByStripeTransferId(String stripeTransferId);
 
-    /**
-     * Check if transaction exists by external transaction ID (for idempotency)
-     */
     boolean existsByExternalTransactionId(String externalTransactionId);
 
     /**

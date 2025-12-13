@@ -22,6 +22,7 @@ import com.uit.transactionservice.repository.TransactionRepository;
 import com.uit.transactionservice.dto.stripe.StripeTransferRequest;
 import com.uit.transactionservice.dto.stripe.StripeTransferResponse;
 import com.uit.transactionservice.dto.SepayWebhookDto;
+import com.uit.transactionservice.dto.sse.TransactionStatusUpdate;
 import com.stripe.exception.StripeException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -50,6 +51,7 @@ public class TransactionService {
     private final OTPService otpService;
     private final AccountServiceClient accountServiceClient;
     private final StripeTransferService stripeTransferService;
+    private final TransactionSseService sseService;
     
     /**
      * Handle SePay webhook for Top-up (Deposit)
@@ -59,13 +61,11 @@ public class TransactionService {
         log.info("Processing SePay Top-up - AccountID: {} - Amount: {} - SePay Ref: {}", 
                 accountId, webhookData.getTransferAmount(), webhookData.getCode());
 
-        // 1. Idempotency check (using SePay code as unique identifier)
         if (transactionRepository.existsByExternalTransactionId(webhookData.getCode())) {
             log.warn("SePay transaction already processed - Ref: {}", webhookData.getCode());
             return;
         }
 
-        // 2. Create Transaction Record
         String correlationId = UUID.randomUUID().toString();
         Transaction transaction = Transaction.builder()
                 .senderAccountId("SEPAY_GATEWAY") // Virtual sender
@@ -85,7 +85,6 @@ public class TransactionService {
         log.info("Created Deposit Transaction - TxID: {}", transaction.getTransactionId());
 
         try {
-            // 3. Credit Account (Call Account Service)
             log.info("Crediting account {} with amount {}", accountId, webhookData.getTransferAmount());
             
             accountServiceClient.creditAccount(
@@ -95,7 +94,6 @@ public class TransactionService {
                     "SePay Deposit: " + webhookData.getDescription()
             );
 
-            // 4. Update Transaction Status to COMPLETED
             transaction.setStatus(TransactionStatus.COMPLETED);
             transaction.setCurrentStep(SagaStep.COMPLETED);
             transaction.setCompletedAt(LocalDateTime.now());
@@ -103,7 +101,6 @@ public class TransactionService {
             
             log.info("SePay Deposit Completed Successfully - TxID: {}", transaction.getTransactionId());
             
-            // 5. Send Notification
             sendTransactionNotification(transaction, "DepositCompleted", true);
 
         } catch (Exception e) {
@@ -130,7 +127,6 @@ public class TransactionService {
         String receiverAccountId = request.getReceiverAccountId();
         log.info("Validating receiver account - AccountID: {}", receiverAccountId);
         
-        // Check local DB first (faster)
         boolean existsInDB = false;
         try {
             existsInDB = accountServiceClient.checkAccountExists(receiverAccountId);
@@ -144,7 +140,6 @@ public class TransactionService {
                     receiverAccountId, e.getMessage());
         }
         
-        // If not in DB, validate with Stripe
         if (request.getTransactionType()==TransactionType.EXTERNAL_TRANSFER && !existsInDB) {
             try {
                 boolean isValidInStripe = stripeTransferService.validateConnectedAccount(receiverAccountId);
@@ -170,8 +165,6 @@ public class TransactionService {
         // BigDecimal totalAmount = request.getAmount(); // No fee
 
         // 4. Create transaction with PENDING_OTP status and Saga state
-        // correlationId: For internal saga orchestration tracking across services
-        // idempotencyKey: For external webhook deduplication (set later when calling Stripe)
         String correlationId = UUID.randomUUID().toString();
         
         Transaction transaction = Transaction.builder()
@@ -666,7 +659,22 @@ public class TransactionService {
      */
     private void sendTransactionNotification(Transaction transaction, String eventType, boolean success) {
         try {
+            // Resolve user IDs safely
+            String senderUserId = accountServiceClient.getUserIdByAccountId(transaction.getSenderAccountId());
+            String receiverUserId = accountServiceClient.getUserIdByAccountId(transaction.getReceiverAccountId());
+            
+            // Handle nulls by converting to empty string
+            String safeSenderUserId = senderUserId != null ? senderUserId : "";
+            String safeReceiverUserId = receiverUserId != null ? receiverUserId : "";
+
+            // Log for debugging (optional)
+            log.debug("Notification user resolution - Sender: {} -> {}, Receiver: {} -> {}", 
+                    transaction.getSenderAccountId(), safeSenderUserId, 
+                    transaction.getReceiverAccountId(), safeReceiverUserId);
+
             Map<String, Object> payload = new HashMap<>();
+            payload.put("senderUserId", safeSenderUserId);
+            payload.put("receiverUserId", safeReceiverUserId);
             payload.put("transactionId", transaction.getTransactionId().toString());
             payload.put("senderAccountId", transaction.getSenderAccountId());
             payload.put("receiverAccountId", transaction.getReceiverAccountId());
@@ -693,24 +701,21 @@ public class TransactionService {
 
         } catch (Exception e) {
             log.error("Failed to create notification event - non-critical", e);
-            // Don't throw exception, notification is non-critical
         }
     }
 
     /**
      * Handle Stripe transfer completed webhook
-     * Called when Stripe sends transfer.updated event (transfer succeeded)
-     * Uses transaction_id from transfer metadata to find transaction
      */
     @Transactional
     public void handleStripeTransferCompleted(String transactionId, String transferId, String webhookIdempotencyKey) {
-        log.info("🔔 Processing Stripe transfer completed - TxID: {} - TransferID: {} - WebhookKey: {}",
+        log.info(" Processing Stripe transfer completed - TxID: {} - TransferID: {} - WebhookKey: {}",
                 transactionId, transferId, webhookIdempotencyKey);
 
-        // ✅ FIND TRANSACTION BY transaction_id (UUID)
+        // 
         Transaction transaction = transactionRepository.findById(UUID.fromString(transactionId))
                 .orElseThrow(() -> {
-                    log.error("❌ Transaction not found: {}", transactionId);
+                    log.error(" Transaction not found: {}", transactionId);
                     return new RuntimeException("Transaction not found: " + transactionId);
                 });
 
@@ -775,8 +780,16 @@ public class TransactionService {
         transaction.setCompletedAt(LocalDateTime.now());
         transactionRepository.save(transaction);
 
-        log.info("✅ Transaction COMPLETED - Transfer succeeded - TxID: {} - TransferID: {}", 
+        log.info(" Transaction COMPLETED - Transfer succeeded - TxID: {} - TransferID: {}", 
                 transaction.getTransactionId(), transaction.getStripeTransferId());
+        
+        // Push SSE update to client
+        TransactionStatusUpdate sseUpdate = TransactionStatusUpdate.success(
+                transaction.getTransactionId().toString(),
+                transaction.getAmount(),
+                transaction.getReceiverAccountId()
+        );
+        sseService.pushUpdate(transaction.getTransactionId().toString(), sseUpdate);
         
         sendTransactionNotification(transaction, "TransactionCompleted", true);
     }
@@ -884,6 +897,15 @@ public class TransactionService {
 
         transaction.setFailureReason("Stripe transfer failed: " + failureMessage);
         transactionRepository.save(transaction);
+        
+        // Push SSE update to client
+        TransactionStatusUpdate sseUpdate = TransactionStatusUpdate.failed(
+                transaction.getTransactionId().toString(),
+                failureCode,
+                failureMessage
+        );
+        sseService.pushUpdate(transaction.getTransactionId().toString(), sseUpdate);
+        
         sendTransactionNotification(transaction, "TransactionFailed", false);
     }
     
