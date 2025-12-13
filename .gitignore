@@ -27,6 +27,7 @@ account-service/target/
 notification-service/target/
 risk-engine/target/
 user-service/target/
+keycloak-extensions/target/
 
 # IntelliJ IDEA files
 .idea/
@@ -40,6 +41,24 @@ notification-service/src/main/resources/fortress-bank-230b4-firebase-adminsdk-fb
 GEMINI.md
 
 # Environment Variables (contains sensitive credentials)
+# NEVER commit production secrets
 .env
 .env.local
 .env.*.local
+.env.prod
+.env.production
+.env.staging
+
+# TLS Certificates and Keys
+*.pem
+*.key
+*.crt
+*.p12
+*.jks
+*/certs/
+keycloak/certs/
+kong/certs/
+
+# Secrets directories
+secrets/
+.secrets/
