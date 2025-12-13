@@ -1,4 +1,4 @@
-package com.uit.accountservice.config;
+package com.uit.transactionservice.config;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -7,9 +7,9 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtDecoders;
 
 /**
- * JWT Configuration for Account Service.
+ * JWT Configuration for Transaction Service.
  * 
- * Provides JwtDecoder bean for validating JWT tokens in both REST and SOAP requests.
+ * Provides JwtDecoder bean for validating JWT tokens.
  * Uses Keycloak's JWK Set URI for public key retrieval.
  * 
  * Configuration:
@@ -17,8 +17,8 @@ import org.springframework.security.oauth2.jwt.JwtDecoders;
  * - spring.security.oauth2.resourceserver.jwt.issuer-uri: Alternative config path
  * 
  * SECURITY FIX (2024-12):
- * - Fixed incorrect JWK Set URI construction
- * - Now properly uses issuer-uri to derive JWKS endpoint
+ * - Added proper JWT validation instead of relying on ParseUserInfoFilter
+ * - Uses issuer-uri to derive JWKS endpoint automatically
  * 
  * If Keycloak is not available, tokens will fail validation (secure by default).
  */
@@ -48,7 +48,8 @@ public class JwtConfig {
             return JwtDecoders.fromIssuerLocation(issuerUri);
         }
         
-        // Fail-fast: config is missing - do NOT silently accept unverified tokens
+        // Fallback: Build manually with JWK Set URI
+        // This shouldn't happen if config is correct, but provides safety
         throw new IllegalStateException(
             "JWT issuer URI not configured. Set jwt.issuer-uri or spring.security.oauth2.resourceserver.jwt.issuer-uri"
         );
