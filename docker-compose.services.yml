@@ -46,13 +46,30 @@ services:
         - MAVEN_OPTS=-Xmx512m
     container_name: user-service
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://user-service-db:5432/userdb
-      SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: 123456
-      SPRING_PROFILES_ACTIVE: docker
-      SERVER_PORT: 4000
-      SPRING_CLOUD_CONFIG_URI: http://config-server:8888
-      JWT_ISSUER_URI: http://keycloak:8080/realms/fortressbank-realm
+      # Database
+      SPRING_DATASOURCE_URL: jdbc:postgresql://user-service-db:5432/${USER_DB_NAME}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+
+      # Spring Config
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
+      SERVER_PORT: ${USER_SERVICE_PORT}
+      SPRING_CLOUD_CONFIG_URI: ${SPRING_CLOUD_CONFIG_URI}
+
+      # Redis
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+
+      # Email Configuration (SendGrid)
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT}
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+      EMAIL_FROM: ${EMAIL_FROM}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME}
+
+      # OAuth2/JWT
+      JWT_ISSUER_URI: ${JWT_ISSUER_URI}
     depends_on:
       discovery:
         condition: service_healthy
@@ -62,8 +79,10 @@ services:
         condition: service_started
       config-server:
         condition: service_started
+      redis:
+        condition: service_healthy
     ports:
-      - "4000:4000"
+      - "${USER_SERVICE_PORT}:${USER_SERVICE_PORT}"
     networks:
       - internal
 

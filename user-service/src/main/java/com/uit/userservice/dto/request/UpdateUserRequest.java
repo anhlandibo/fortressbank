@@ -12,8 +12,6 @@ import java.time.LocalDate;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Getter
-@Setter
 public class UpdateUserRequest {
 
     @NotBlank(message = "FULLNAME_REQUIRED")
@@ -25,4 +23,7 @@ public class UpdateUserRequest {
 
     @DobConstraint(minAge = 18, message = "USER_MUST_BE_18_YEARS_OLD")
     private LocalDate dob;
+
+    @Pattern(regexp = "^[0-9]{10,11}$", message = "PHONE_NUMBER_INVALID_FORMAT")
+    private String phoneNumber;
 }

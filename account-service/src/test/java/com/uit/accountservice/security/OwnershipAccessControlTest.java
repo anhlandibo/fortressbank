@@ -99,7 +99,6 @@ class OwnershipAccessControlTest extends AbstractIntegrationTest {
         // Alice's account - let Hibernate generate ID
         aliceAccount = accountRepository.saveAndFlush(Account.builder()
                 .userId("alice-user-id")
-                .accountType("CHECKING")
                 .balance(BigDecimal.valueOf(1000.00))
                 .createdAt(LocalDateTime.now())
                 .build());
@@ -107,7 +106,6 @@ class OwnershipAccessControlTest extends AbstractIntegrationTest {
         // Bob's account - let Hibernate generate ID
         bobAccount = accountRepository.saveAndFlush(Account.builder()
                 .userId("bob-user-id")
-                .accountType("SAVINGS")
                 .balance(BigDecimal.valueOf(2000.00))
                 .createdAt(LocalDateTime.now())
                 .build());

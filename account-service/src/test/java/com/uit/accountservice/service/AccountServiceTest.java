@@ -87,7 +87,6 @@ class AccountServiceTest {
         aliceAccount = Account.builder()
                 .accountId("acc-123")
                 .userId("alice")
-                .accountType("CHECKING")
                 .balance(BigDecimal.valueOf(1000.00))
                 .createdAt(LocalDateTime.now())
                 .build();
@@ -95,7 +94,6 @@ class AccountServiceTest {
         bobAccount = Account.builder()
                 .accountId("acc-456")
                 .userId("bob")
-                .accountType("SAVINGS")
                 .balance(BigDecimal.valueOf(2000.00))
                 .createdAt(LocalDateTime.now())
                 .build();

@@ -15,6 +15,10 @@ public interface UserRepository extends JpaRepository<User, String> {
 
     Optional<User> findByUsername(String username);
 
+    Optional<User> findByPhoneNumber(String phoneNumber);
+
+    Optional<User> findByCitizenId(String citizenId);
+
     @Query("SELECT u FROM User u WHERE " +
             "(:keyword IS NULL OR :keyword = '' OR " +
             "LOWER(u.username) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +

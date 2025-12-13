@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FortressBank Notification</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            background-color: #f4f4f4;
+        }
+        
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 30px 20px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            color: #ffffff;
+            font-size: 28px;
+            font-weight: 700;
+            margin: 0;
+        }
+        
+        .header p {
+            color: #f0f0f0;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        
+        .content {
+            padding: 40px 30px;
+        }
+        
+        .notification-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .notification-message {
+            background-color: #f7fafc;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        
+        .notification-message p {
+            color: #4a5568;
+            font-size: 16px;
+            line-height: 1.8;
+            white-space: pre-line;
+        }
+        
+        .info-box {
+            background-color: #edf2f7;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #cbd5e0;
+        }
+        
+        .info-row:last-child {
+            border-bottom: none;
+        }
+        
+        .info-label {
+            font-weight: 600;
+            color: #2d3748;
+        }
+        
+        .info-value {
+            color: #4a5568;
+            text-align: right;
+        }
+        
+        .success-badge {
+            display: inline-block;
+            background-color: #48bb78;
+            color: #ffffff;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .failed-badge {
+            display: inline-block;
+            background-color: #f56565;
+            color: #ffffff;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .info-badge {
+            display: inline-block;
+            background-color: #4299e1;
+            color: #ffffff;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .cta-button {
+            display: inline-block;
+            background: #E8F0FE;
+            color: #2d3748;
+            padding: 14px 32px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            margin: 20px 0;
+            text-align: center;
+        }
+        
+        .cta-container {
+            text-align: center;
+            margin: 30px 0;
+        }
+        
+        .footer {
+            background-color: #2d3748;
+            color: #a0aec0;
+            padding: 30px 20px;
+            text-align: center;
+            font-size: 14px;
+        }
+        
+        .footer p {
+            margin: 5px 0;
+        }
+        
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        
+        .divider {
+            height: 1px;
+            background-color: #e2e8f0;
+            margin: 30px 0;
+        }
+        
+        .timestamp {
+            color: #718096;
+            font-size: 14px;
+            text-align: center;
+            margin-top: 20px;
+        }
+        
+        @media only screen and (max-width: 600px) {
+            .content {
+                padding: 20px 15px;
+            }
+            
+            .notification-title {
+                font-size: 20px;
+            }
+            
+            .info-row {
+                flex-direction: column;
+            }
+            
+            .info-value {
+                text-align: left;
+                margin-top: 5px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🏦 FortressBank</h1>
+            <p>Secure Banking for Modern Life</p>
+        </div>
+        
+        <!-- Content -->
+        <div class="content">
+            <!-- Title with dynamic badge -->
+            <h2 class="notification-title">
+                {{title}}
+                {{#if badge}}
+                <br><br>
+                <span class="{{badgeClass}}">{{badge}}</span>
+                {{/if}}
+            </h2>
+            
+            <!-- Main Message -->
+            <div class="notification-message">
+                <p>{{content}}</p>
+            </div>
+            
+            <!-- Additional Info (Optional) -->
+            {{#if additionalInfo}}
+            <div class="info-box">
+                {{#each additionalInfo}}
+                <div class="info-row">
+                    <span class="info-label">{{this.label}}</span>
+                    <span class="info-value">{{this.value}}</span>
+                </div>
+                {{/each}}
+            </div>
+            {{/if}}
+            
+            <!-- Call to Action (Optional) -->
+            {{#if ctaUrl}}
+            <div class="cta-container">
+                <a href="{{ctaUrl}}" class="cta-button">{{ctaText}}</a>
+            </div>
+            {{/if}}
+            
+            <div class="divider"></div>
+            
+            <!-- Timestamp -->
+            <p class="timestamp">
+                📅 Sent on {{timestamp}}
+            </p>
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer">
+            <p><strong>FortressBank</strong></p>
+            <p>123 Banking Street, Financial District</p>
+            <p>Ho Chi Minh City, Vietnam</p>
+            <p style="margin-top: 15px;">
+                Need help? <a href="mailto:support@fortressbank.com">Contact Support</a>
+            </p>
+            <p style="margin-top: 15px; font-size: 12px;">
+                This is an automated message. Please do not reply to this email.
+            </p>
+            <p style="margin-top: 10px; font-size: 12px; color: #718096;">
+                © 2025 FortressBank. All rights reserved.
+            </p>
+        </div>
+    </div>
+</body>
+</html>

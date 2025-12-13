@@ -16,6 +16,7 @@ public enum ErrorCode {
     /* User */
     USER_CREATION_FAILED(500, "User creation failed", HttpStatus.INTERNAL_SERVER_ERROR),
     USER_ALREADY_EXISTS(409, "User already existed", HttpStatus.CONFLICT),
+    UNAUTHORIZED(401, "Unauthorized access", HttpStatus.UNAUTHORIZED),
     USER_NOT_FOUND(404, "User not found", HttpStatus.NOT_FOUND),
 
     /* Transaction */

@@ -15,7 +15,8 @@ import java.util.Optional;
 @Repository
 public interface AccountRepository extends JpaRepository<Account, String> {
 
-    List<Account> findByUserId(String userId);
+    @Query("SELECT a FROM Account a WHERE a.userId = :userId")
+    List<Account> findByUserId(@Param("userId") String userId);
 
     /**
      * Find account with pessimistic write lock to prevent concurrent modifications.
@@ -38,4 +39,6 @@ public interface AccountRepository extends JpaRepository<Account, String> {
     Optional<Account> findByAccountNumber(String accountNumber);
 
     boolean existsByAccountNumber(String accountNumber);
+
+    boolean existsByUserId(String userId);
 }

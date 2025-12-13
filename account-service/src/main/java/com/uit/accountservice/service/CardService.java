@@ -65,7 +65,7 @@ public class CardService {
         Card card = Card.builder()
                 .accountId(account.getAccountId())
                 .cardNumber(cardNumber)
-                .cardHolderName(cardHolderName) // Lấy tên user (tạm thời hardcode hoặc gọi User Service)
+                .cardHolderName(cardHolderName) 
                 .cvvHash(passwordEncoder.encode(cvv)) // Hash CVV
                 .expirationDate(expiryDate)
                 .cardType(CardType.valueOf(request.cardType().toUpperCase()))

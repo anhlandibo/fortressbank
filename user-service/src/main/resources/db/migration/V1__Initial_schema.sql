@@ -8,5 +8,5 @@ CREATE TABLE users (
     full_name VARCHAR(255),
     created_at TIMESTAMP,
     citizen_id VARCHAR(20) UNIQUE,
-    dob DATE,
+    dob DATE
 );
