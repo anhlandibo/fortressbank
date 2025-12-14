@@ -7,9 +7,11 @@ import com.uit.sharedkernel.outbox.OutboxEvent;
 import com.uit.sharedkernel.outbox.OutboxEventStatus;
 import com.uit.sharedkernel.outbox.repository.OutboxEventRepository;
 import com.uit.userservice.client.AccountClient;
+import com.uit.userservice.client.CardClient;
 import com.uit.userservice.client.CreateAccountInternalRequest;
 import com.uit.userservice.dto.request.*;
 import com.uit.userservice.dto.response.AccountDto;
+import com.uit.userservice.dto.response.CardDto;
 import com.uit.userservice.dto.response.OtpResponse;
 import com.uit.userservice.dto.response.TokenResponse;
 import com.uit.userservice.dto.response.UserResponse;
@@ -142,13 +144,11 @@ public class AuthServiceImpl implements AuthService {
                     .pin(request.getPin())
                     .build();
 
-            AccountDto account = accountClient.createAccountForUser(user.getId(), accountRequest).getData();
+            AccountDto account = accountClient.createAccountForUser(user.getId(), accountRequest, user.getFullName()).getData();
             log.info("Account created successfully for user {} with accountNumber {} and PIN set",
                     user.getId(), account.getAccountNumber());
         } catch (Exception e) {
             log.error("Failed to create account for user {}: {}", user.getId(), e.getMessage(), e);
-            // Don't fail registration if account creation fails
-            // User can create account manually later
         }
 
         return new UserResponse(

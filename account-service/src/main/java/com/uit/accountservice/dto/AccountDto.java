@@ -19,4 +19,5 @@ public class AccountDto {
     private LocalDateTime createdAt;
     private String accountNumber;
     private String accountStatus;
+    private String fullName;
 }

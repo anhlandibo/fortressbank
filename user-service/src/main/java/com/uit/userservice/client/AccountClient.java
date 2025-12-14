@@ -6,13 +6,15 @@ import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 
-@FeignClient(name = "account-service")
+@FeignClient(name = "account-service", contextId = "accountClient")
 public interface AccountClient {
 
     @PostMapping("/accounts/internal/create/{userId}")
     ApiResponse<AccountDto> createAccountForUser(
             @PathVariable("userId") String userId,
-            @RequestBody CreateAccountInternalRequest request
+            @RequestBody CreateAccountInternalRequest request,
+            @RequestParam(value = "fullName", required = false) String fullName
     );
 }

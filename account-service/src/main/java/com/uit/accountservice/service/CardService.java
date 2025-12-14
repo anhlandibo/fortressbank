@@ -31,7 +31,6 @@ public class CardService {
     private final PasswordEncoder passwordEncoder;
     private final UserClient userClient;
 
-    // LẤY DANH SÁCH THẺ
     public List<CardDto> getCardsByAccountId(String accountId, String userId) {
         validateAccountOwnership(accountId, userId);
 
@@ -40,7 +39,6 @@ public class CardService {
                 .collect(Collectors.toList());
     }
 
-    // PHÁT HÀNH THẺ MỚI (Card type is always VIRTUAL)
     public CardDto issueCard(String userId, String accountId){
         Account account = validateAccountOwnership(accountId, userId);
 
@@ -48,13 +46,11 @@ public class CardService {
         try {
             ApiResponse<UserResponse> response = userClient.getUserById(userId);
             if (response != null && response.getData() != null && response.getData().fullName() != null) {
-                // Tên trên thẻ thường viết hoa không dấu
                 cardHolderName = response.getData().fullName().toUpperCase();
             } else {
                 log.warn("User fullName is null for userId: {}. Using default cardHolderName.", userId);
             }
         } catch (Exception e) {
-            // Fallback: Nếu gọi user-service lỗi, có thể lấy từ Token hoặc để default
             log.error("Failed to fetch user info for card issuance for userId: {}. Error: {}", userId, e.getMessage());
         }
         String cardNumber = generateLuhnCardNumber();
@@ -67,9 +63,9 @@ public class CardService {
                 .accountId(account.getAccountId())
                 .cardNumber(cardNumber)
                 .cardHolderName(cardHolderName)
-                .cvvHash(passwordEncoder.encode(cvv)) // Hash CVV
+                .cvvHash(passwordEncoder.encode(cvv)) 
                 .expirationDate(expiryDate)
-                .cardType(CardType.VIRTUAL)  // Always VIRTUAL by default
+                .cardType(CardType.VIRTUAL) 
                 .status(CardStatus.ACTIVE)
                 .build();
 
@@ -78,6 +74,30 @@ public class CardService {
         log.info("VIRTUAL card issued successfully - CardNumber: {} (masked)", maskCardNumber(cardNumber));
 
         return toDto(card);
+    }
+
+    public void createInitialCard(Account account, String fullName) {
+        String cardHolderName = (fullName != null && !fullName.isEmpty()) ? fullName.toUpperCase() : "VALUED CUSTOMER";
+        
+        String cardNumber = generateLuhnCardNumber();
+        String cvv = generateRandomDigits(3);
+        LocalDate expiryDate = LocalDate.now().plusYears(5);
+
+        Card card = Card.builder()
+                .accountId(account.getAccountId())
+                .cardNumber(cardNumber)
+                .cardHolderName(cardHolderName)
+                .cvvHash(passwordEncoder.encode(cvv))
+                .expirationDate(expiryDate)
+                .cardType(CardType.VIRTUAL) 
+                .status(CardStatus.ACTIVE)
+                .build();
+
+        cardRepository.save(card);
+        
+        // Log thông tin quan trọng (Masked)
+        log.info("AUTO-CREATED: VIRTUAL card issued for Account {} - User: {} - Card: {}", 
+                account.getAccountId(), cardHolderName, maskCardNumber(cardNumber));
     }
 
     // --- KHÓA/MỞ THẺ ---
@@ -147,5 +167,31 @@ public class CardService {
     private String getAccountHolderName(String userId) {
         // Tạm thời trả về tên cố định, sau này có thể gọi User Service để lấy tên thật
         return "NGO MINH TRI";
+    }
+
+    public CardDto issueCardInternal(String accountId, String fullName) {
+        // 1. Tìm Account để lấy UserId (Tin tưởng User Service đã tạo account thành công)
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND));
+                
+        String cardHolderName = (fullName != null) ? fullName.toUpperCase() : "UNKNOWN";
+        String cardNumber = generateLuhnCardNumber();
+        String cvv = generateRandomDigits(3);
+        LocalDate expiryDate = LocalDate.now().plusYears(5);
+
+        Card card = Card.builder()
+                .accountId(account.getAccountId())
+                .cardNumber(cardNumber)
+                .cardHolderName(cardHolderName)
+                .cvvHash(passwordEncoder.encode(cvv))
+                .expirationDate(expiryDate)
+                .cardType(CardType.VIRTUAL)
+                .status(CardStatus.ACTIVE)
+                .build();
+
+        cardRepository.save(card);
+        log.info("INTERNAL: VIRTUAL card issued for Account {} - User {}", accountId, cardHolderName);
+
+        return toDto(card);
     }
 }

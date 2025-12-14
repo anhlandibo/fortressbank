@@ -29,7 +29,7 @@ public class ParseUserInfoFilter implements Filter {
 
         // Skip authentication for internal and public endpoints
         String requestPath = httpRequest.getRequestURI();
-        if (requestPath.startsWith("/accounts/internal/") || requestPath.startsWith("/accounts/public/")) {
+        if (requestPath.startsWith("/accounts/internal/") || requestPath.startsWith("/accounts/public/") || requestPath.startsWith("/cards/internal")) {
             chain.doFilter(request, response);
             return;
         }

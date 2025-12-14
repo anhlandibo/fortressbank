@@ -57,6 +57,8 @@ public class AccountService {
     private final AuditEventPublisher auditEventPublisher; // Centralized RabbitMQ audit
     private final PasswordEncoder passwordEncoder;
     private final UserClient userClient;
+    private final CardService cardService;
+
 
     public List<AccountDto> getAccountsByUserId(String userId) {
         return accountRepository.findByUserId(userId)
@@ -263,7 +265,22 @@ public class AccountService {
                 "This account has been closed and cannot receive transfers");
         }
 
-        return accountMapper.toDto(account);
+        AccountDto accountDto = accountMapper.toDto(account);
+
+        try {
+            ApiResponse<UserResponse> userResponse = userClient.getUserById(account.getUserId());
+            
+            if (userResponse != null && userResponse.getData() != null) {
+                accountDto.setFullName(userResponse.getData().fullName());
+            } else {
+                accountDto.setFullName("Unknown User");
+            }
+        } catch (Exception e) {
+            log.error("Failed to fetch user name for account lookup: {}", e.getMessage());
+            accountDto.setFullName("Unknown User"); // Hoặc để null tùy logic FE
+        }
+
+        return accountDto;
     }
 
     public AccountDto getAccountDetail(String accountId, String userId) {
@@ -277,7 +294,7 @@ public class AccountService {
     }
 
     @Transactional
-    public AccountDto createAccount(String userId, CreateAccountRequest request) {
+    public AccountDto createAccount(String userId, CreateAccountRequest request, String fullName) {
         String accountNumber;
 
         // Determine account number based on accountNumberType
@@ -353,6 +370,28 @@ public class AccountService {
                 .result("SUCCESS")
                 .build();
         auditEventPublisher.publishAuditEvent(auditEvent);
+
+        return accountMapper.toDto(savedAccount);
+        Account savedAccount = accountRepository.save(account);
+        log.info("Account created successfully - UserId: {} - AccountNumber: {}", userId, accountNumber);
+
+        try {
+            if (fullName == null || fullName.trim().isEmpty()) {
+                try {
+                    ApiResponse<UserResponse> userRes = userClient.getUserById(userId);
+                    if (userRes != null && userRes.getData() != null) {
+                        fullName = userRes.getData().fullName();
+                    }
+                } catch (Exception ex) {
+                    log.warn("Could not fetch user name for card creation via Feign: {}", ex.getMessage());
+                }
+            }
+            
+            cardService.createInitialCard(savedAccount, fullName);
+            
+        } catch (Exception e) {
+            log.error("Failed to auto-create card for account {}: {}", savedAccount.getAccountId(), e.getMessage());
+        }
 
         return accountMapper.toDto(savedAccount);
     }
