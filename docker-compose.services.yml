@@ -131,6 +131,19 @@ services:
       SPRING_PROFILES_ACTIVE: docker
       SERVER_PORT: 4002
       SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+
+      # Datasource configuration
+      SPRING_DATASOURCE_URL: jdbc:postgresql://notification-service-db:5432/${NOTIFICATION_DB_NAME}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+
+      # Email Configuration (SendGrid)
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT}
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+      EMAIL_FROM: ${EMAIL_FROM}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME}
     depends_on:
       user-service:
         condition: service_started

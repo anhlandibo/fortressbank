@@ -1,3 +1,95 @@
 server:
   port: 4002
   max-http-request-header-size: 64KB
+
+
+spring:
+  application:
+    name: notification-service
+  #  cloud:
+  #    config:
+  #      uri: ${SPRING_CLOUD_CONFIG_URI}
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://notification-service-db:5432/notificationdb}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:rabbitmq}
+    port: ${RABBITMQ_PORT:5672}
+    username: guest
+    password: guest
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+    baseline-version: 0
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    show-sql: true
+
+  h2:
+    console:
+      path=/h2-console:
+      enabled: true
+
+  # Mail configuration for SendGrid
+  mail:
+    host: ${MAIL_HOST:smtp.sendgrid.net}
+    port: ${MAIL_PORT:587}
+    username: apikey  # Always use "apikey" as username for SendGrid
+    password: ${MAIL_PASSWORD}  # Your SendGrid API Key (starts with "SG.")
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          ssl:
+            trust: smtp.sendgrid.net
+          connectiontimeout: 10000
+          timeout: 10000
+          writetimeout: 10000
+    # Default sender email (must be verified in SendGrid)
+    default-encoding: UTF-8
+    protocol: smtp
+
+  # Disable cloud config for tests
+  cloud:
+    config:
+      enabled: false
+    discovery:
+      enabled: false
+
+  eureka:
+    client:
+      serviceUrl:
+        defaultZone: http://discovery:8761/eureka
+
+# TextBee SMS configuration (moved outside spring block)
+textbee:
+  api:
+    key: ${TEXTBEE_API_KEY:d0067ec4-9b8a-49c4-9295-e8120c19a162}
+  device:
+    id: ${TEXTBEE_DEVICE_ID:68f1c11d6a418a16ec8f483e}
+
+# Email settings (must match verified sender in SendGrid)
+app:
+  email:
+    from-email: ${EMAIL_FROM:bolacbt2k@gmail.com}  # Must be verified in SendGrid
+    from-name: ${EMAIL_FROM_NAME:Fortress Bank}
+
+logging:
+  level:
+    com.uit.notificationservice: DEBUG
+    org.springframework.security: DEBUG
+
