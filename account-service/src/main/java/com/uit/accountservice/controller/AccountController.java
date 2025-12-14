@@ -54,22 +54,7 @@ public class AccountController {
             "accounts", accounts
         );
     }
-    
-    /**
-     * Get a specific account by ID with ownership validation.
-     * Users can only access accounts they own.
-     */
-    /*
-    @GetMapping("/{accountId}")
-    @PreAuthorize("@accountService.isOwner(#accountId, authentication.name)")
-    @RequireRole("user")
-    public ResponseEntity<AccountDto> getAccount(@PathVariable String accountId) {
-        return accountRepository.findById(accountId)
-                .map(accountMapper::toDto)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
-    */
+
     
     @GetMapping("/dashboard")
     @RequireRole("admin")  // Like requireRole('admin') in Express
@@ -79,59 +64,6 @@ public class AccountController {
             "stats", Map.of("totalUsers", 42, "totalAccounts", 100)
         );
     }
-
-    // @PostMapping("/transfers")
-    // @PreAuthorize("@accountService.isOwner(#transferRequest.fromAccountId, authentication.name)")
-    // @RequireRole("user")
-    // public ResponseEntity<?> handleTransfer(@RequestBody TransferRequest transferRequest, HttpServletRequest request) {
-    //     @SuppressWarnings("unchecked")
-    //     Map<String, Object> userInfo = (Map<String, Object>) request.getAttribute("userInfo");
-    //     String userId = (String) userInfo.get("sub");
-        
-    //     // Extract fraud detection metadata from headers
-    //     String deviceFingerprint = request.getHeader("X-Device-Fingerprint");
-    //     String ipAddress = request.getHeader("X-Forwarded-For");
-    //     if (ipAddress == null) {
-    //         ipAddress = request.getRemoteAddr();
-    //     }
-    //     String location = request.getHeader("X-Location"); // Expected format: "City, Country" or "Country"
-        
-    //     return ResponseEntity.ok(accountService.handleTransfer(
-    //             transferRequest, userId, deviceFingerprint, ipAddress, location));
-    // }
-
-    // @PostMapping("/verify-transfer")
-    // @RequireRole("user")
-    // public ResponseEntity<AccountDto> verifyTransfer(@RequestBody VerifyTransferRequest verifyTransferRequest) {
-    //     return ResponseEntity.ok(accountService.verifyTransfer(verifyTransferRequest));
-    // }
-
-    /**
-     * Get audit logs for the current user's transfers.
-     * Users can only see their own transfer history.
-     */
-    // @GetMapping("/audit/my-transfers")
-    // @RequireRole("user")
-    // public ResponseEntity<List<TransferAuditLog>> getMyTransferAudit(HttpServletRequest request) {
-    //     @SuppressWarnings("unchecked")
-    //     Map<String, Object> userInfo = (Map<String, Object>) request.getAttribute("userInfo");
-    //     String userId = (String) userInfo.get("sub");
-        
-    //     List<TransferAuditLog> auditLogs = auditService.getUserTransferHistory(userId);
-    //     return ResponseEntity.ok(auditLogs);
-    // }
-
-    /**
-     * Get audit logs for a specific account.
-     * Users can only see audit logs for accounts they own.
-     */
-    // @GetMapping("/audit/account/{accountId}")
-    // @PreAuthorize("@accountService.isOwner(#accountId, authentication.name)")
-    // @RequireRole("user")
-    // public ResponseEntity<List<TransferAuditLog>> getAccountAuditLogs(@PathVariable String accountId) {
-    //     List<TransferAuditLog> auditLogs = auditService.getAccountTransferHistory(accountId);
-    //     return ResponseEntity.ok(auditLogs);
-    // }
 
     /**
      * Debit (subtract) amount from an account.
@@ -225,6 +157,11 @@ public class AccountController {
     public ResponseEntity<ApiResponse<AccountDto>> getAccountDetail(@PathVariable("accountId") String accountId) {
         AccountDto account = accountService.getAccountDetail(accountId, getCurrentUserId());
         return ResponseEntity.ok(ApiResponse.success(account));
+    }
+
+    @GetMapping("/by-number/{accountNumber}")
+    public ResponseEntity<AccountDto> getAccountByNumber(@PathVariable String accountNumber) {
+        return ResponseEntity.ok(accountService.getAccountByNumber(accountNumber));
     }
 
     // GET /accounts/{accountId}/balance

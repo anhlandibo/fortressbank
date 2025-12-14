@@ -16,6 +16,10 @@ spring:
     init:
       mode: never
 
+  jpa:
+    # Exclude outbox entities since audit-service doesn't need them
+    mapping-resources:
+
   rabbitmq:
     host: ${SPRING_RABBITMQ_HOST:localhost}
     port: 5672

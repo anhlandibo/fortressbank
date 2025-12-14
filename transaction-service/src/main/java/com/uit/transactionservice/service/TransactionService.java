@@ -116,60 +116,93 @@ public class TransactionService {
         }
     }
 
-    /**
-     * Create a new transfer transaction with OTP verification
-     */
     @Transactional
     public TransactionResponse createTransfer(CreateTransferRequest request, String userId, String phoneNumber) {
-        log.info("Creating transfer from {} to {} with OTP", request.getSenderAccountId(), request.getReceiverAccountId());
+        log.info("Creating transfer from {} to {} with OTP", request.getSenderAccountNumber(), request.getReceiverAccountNumber());
 
-        // 1. Validate receiver account exists (for all transaction types)
-        String receiverAccountId = request.getReceiverAccountId();
-        log.info("Validating receiver account - AccountID: {}", receiverAccountId);
-        
-        boolean existsInDB = false;
+        String senderUserId = userId;
+
+        // 1. Validate Sender Account Exists (Always)
+        // We use getAccountByNumber to verify sender
         try {
-            existsInDB = accountServiceClient.checkAccountExists(receiverAccountId);
-            if (existsInDB) {
-                log.info("Receiver account found in local DB - AccountID: {}", receiverAccountId);
-            } else {
-                log.warn("Receiver account not found in local DB, will check Stripe - AccountID: {}", receiverAccountId);
+            Map<String, Object> senderInfo = accountServiceClient.getAccountByNumber(request.getSenderAccountNumber());
+            if (senderInfo == null) {
+                 throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Sender account not found: " + request.getSenderAccountNumber());
             }
+            // Optional: Verify that the resolved ID matches the ID in request if needed, 
+            // but we trust the number lookup.
+            // String resolvedSenderId = (String) senderInfo.get("accountId");
         } catch (Exception e) {
-            log.warn("Failed to check local DB, will check Stripe - AccountID: {} - Error: {}", 
-                    receiverAccountId, e.getMessage());
+             // If service call fails
+             log.error("Failed to validate sender account: {}", e.getMessage());
+             throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Sender account validation failed");
         }
-        
-        if (request.getTransactionType()==TransactionType.EXTERNAL_TRANSFER && !existsInDB) {
+
+
+        // 2. Validate Receiver based on Transaction Type
+        String receiverAccountNumber = request.getReceiverAccountNumber();
+        String receiverAccountId = null;
+        String receiverUserId = null;
+
+        if (request.getTransactionType() == TransactionType.INTERNAL_TRANSFER) {
+            // INTERNAL: Check against local Account Service
+            log.info("Validating INTERNAL receiver - AccountNumber: {}", receiverAccountNumber);
             try {
-                boolean isValidInStripe = stripeTransferService.validateConnectedAccount(receiverAccountId);
-                
-                if (!isValidInStripe) {
-                    log.error("Receiver account not found in DB and invalid in Stripe - AccountID: {}", receiverAccountId);
-                    throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND);
+                Map<String, Object> accountMap = accountServiceClient.getAccountByNumber(receiverAccountNumber);
+                if (accountMap != null) {
+                    receiverAccountId = (String) accountMap.get("accountId");
+                    Object rUserId = accountMap.get("userId");
+                    if (rUserId != null) {
+                        receiverUserId = rUserId.toString();
+                    }
+                    log.info("Receiver found locally - ID: {}, UserID: {}", receiverAccountId, receiverUserId);
+                } else {
+                    throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Receiver account not found for internal transfer");
                 }
+            } catch (Exception e) {
+                log.warn("Failed to check local DB for receiver: {}", e.getMessage());
+                throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Receiver account not found: " + e.getMessage());
+            }
+        
+        } else if (request.getTransactionType() == TransactionType.EXTERNAL_TRANSFER) {
+            // EXTERNAL: Validate via Stripe, do NOT check local Account Service
+            // Receiver Account ID/User ID will be NULL in our DB
+            log.info("Validating EXTERNAL receiver via Stripe - Account: {}", receiverAccountNumber);
+            try {
+                boolean isValidInStripe = stripeTransferService.validateConnectedAccount(receiverAccountNumber);
+                if (!isValidInStripe) {
+                    log.error("Receiver account invalid in Stripe - Account: {}", receiverAccountNumber);
+                    throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "External receiver account invalid");
+                }
+                log.info("Receiver account validated in Stripe");
                 
-                log.info("Receiver account validated in Stripe - AccountID: {}", receiverAccountId);
+                // For external, we might store the external ID in receiverAccountId or keep it null 
+                // and just use receiverAccountNumber. Keeping it null to distinguish.
+                // Or we can store the stripe ID in receiverAccountId if we want.
+                // Let's keep receiverAccountId null as per requirement "lưu vào transaction sẽ chỉ có receiveraccountnumber thôi"
+                
             } catch (com.stripe.exception.StripeException e) {
-                log.error("Failed to validate receiver account with Stripe - AccountID: {} - Error: {}", 
-                        receiverAccountId, e.getMessage());
-                throw new RuntimeException("Failed to validate receiver account: " + e.getMessage(), e);
+                log.error("Failed to validate receiver account with Stripe: {}", e.getMessage());
+                throw new RuntimeException("Failed to validate external receiver account", e);
             }
         }
 
-        // 2. Check transaction limit
+        // 3. Check transaction limit using Sender Account ID
         checkTransactionLimit(request.getSenderAccountId(), request.getAmount());
 
-        // 3. Fee is temporarily set to ZERO (no transaction fee for now)
+        // 4. Fee is temporarily set to ZERO (no transaction fee for now)
         BigDecimal fee = BigDecimal.ZERO;
-        // BigDecimal totalAmount = request.getAmount(); // No fee
 
-        // 4. Create transaction with PENDING_OTP status and Saga state
+        // 5. Create transaction with PENDING_OTP status
         String correlationId = UUID.randomUUID().toString();
         
         Transaction transaction = Transaction.builder()
                 .senderAccountId(request.getSenderAccountId())
-                .receiverAccountId(request.getReceiverAccountId())
+                .senderAccountNumber(request.getSenderAccountNumber())
+                .senderUserId(senderUserId)
+                .receiverAccountNumber(request.getReceiverAccountNumber())
+                .receiverAccountId(receiverAccountId) // Null for external
+                .receiverUserId(receiverUserId)       // Null for external
                 .amount(request.getAmount())
                 .feeAmount(fee)
                 .transactionType(request.getTransactionType())
@@ -180,19 +213,18 @@ public class TransactionService {
                 .currentStep(com.uit.transactionservice.entity.SagaStep.STARTED)
                 .build();
         transaction = transactionRepository.save(transaction);
-        log.info("transaction " + transaction);
+        
+        log.info("Transaction created with ID: {} - Type: {} - Status: PENDING_OTP", 
+                transaction.getTransactionId(), request.getTransactionType());
 
-        log.info("Transaction created with ID: {} - Correlation ID: {} - Status: PENDING_OTP", 
-                transaction.getTransactionId(), correlationId);
-
-        // 4. Generate and save OTP to Redis
+        // 6. Generate and save OTP to Redis
         String otpCode = otpService.generateOTP();
         log.info("Generated OTP Code: " + otpCode); // For development only
         otpService.saveOTP(transaction.getTransactionId(), otpCode, phoneNumber);
         
         log.info("OTP generated and saved to Redis for transaction: {}", transaction.getTransactionId());
 
-        // 5. Send OTP SMS via event (notification-service will handle)
+        // 7. Send OTP SMS via event (notification-service will handle)
         sendOTPNotification(transaction.getTransactionId(), phoneNumber, otpCode);
 
         return transactionMapper.toResponse(transaction);
@@ -494,8 +526,8 @@ public class TransactionService {
             
             log.info("Internal transfer completed - TxID: {} - Sender new balance: {} - Receiver new balance: {}",
                     transaction.getTransactionId(), 
-                    transferResponse.getFromAccountNewBalance(),
-                    transferResponse.getToAccountNewBalance());
+                    transferResponse.getSenderAccountNewBalance(),
+                    transferResponse.getReceiverAccountNewBalance());
             
             return transactionMapper.toResponse(transaction);
 
@@ -568,8 +600,8 @@ public class TransactionService {
                 StripeTransferRequest stripeRequest = StripeTransferRequest.builder()
                         .amount(totalAmount.multiply(BigDecimal.valueOf(100)).longValue()) // Convert to cents
                         .currency("usd")
-                        // .destination(transaction.getReceiverAccountId()) // Connected Account ID (e.g., "acct_xxxxx")
-                        .destination("acct_1ScVfURovHoUHamy") // Connected Account ID (e.g., "acct_xxxxx")
+                        .destination(transaction.getReceiverAccountNumber()) // Connected Account ID (e.g., "acct_xxxxx")
+                        // .destination("acct_1ScVfURovHoUHamy") // Connected Account ID (e.g., "acct_xxxxx")
                         .description(transaction.getDescription())
                         .metadata(Map.of(
                                 "transaction_id", transaction.getTransactionId().toString(),
@@ -659,18 +691,12 @@ public class TransactionService {
      */
     private void sendTransactionNotification(Transaction transaction, String eventType, boolean success) {
         try {
-            // Resolve user IDs safely
-            String senderUserId = accountServiceClient.getUserIdByAccountId(transaction.getSenderAccountId());
-            String receiverUserId = accountServiceClient.getUserIdByAccountId(transaction.getReceiverAccountId());
-            
-            // Handle nulls by converting to empty string
-            String safeSenderUserId = senderUserId != null ? senderUserId : "";
-            String safeReceiverUserId = receiverUserId != null ? receiverUserId : "";
+            // Use user IDs directly from transaction entity
+            String safeSenderUserId = transaction.getSenderUserId() != null ? transaction.getSenderUserId() : "";
+            String safeReceiverUserId = transaction.getReceiverUserId() != null ? transaction.getReceiverUserId() : "";
 
             // Log for debugging (optional)
-            log.debug("Notification user resolution - Sender: {} -> {}, Receiver: {} -> {}", 
-                    transaction.getSenderAccountId(), safeSenderUserId, 
-                    transaction.getReceiverAccountId(), safeReceiverUserId);
+            log.debug("Notification - SenderUser: {}, ReceiverUser: {}", safeSenderUserId, safeReceiverUserId);
 
             Map<String, Object> payload = new HashMap<>();
             payload.put("senderUserId", safeSenderUserId);

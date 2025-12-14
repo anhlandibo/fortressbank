@@ -6,6 +6,7 @@ import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Getter
 @Setter
@@ -14,9 +15,13 @@ import java.time.LocalDateTime;
 @Builder
 public class TransactionResponse {
 
-    private java.util.UUID transactionId;
+    private UUID transactionId;
     private String senderAccountId;
+    private String senderAccountNumber;
+    private String senderUserId;
     private String receiverAccountId;
+    private String receiverAccountNumber;
+    private String receiverUserId;
     private BigDecimal amount;
     private BigDecimal feeAmount;
     private TransactionType transactionType;

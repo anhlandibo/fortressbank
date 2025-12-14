@@ -176,53 +176,35 @@ public class AccountServiceClient {
     }
 
     /**
-     * Check if account exists in the database
-     * Returns true if account exists, false otherwise
-     * Uses GET /accounts/{accountId} endpoint - returns 200 if exists, 404 if not
+     * Get account details by account number.
+     * Returns Map with account info if found, or null if not found (404).
      */
-    public boolean checkAccountExists(String accountId) {
-        String url = accountServiceUrl + "/accounts/" + accountId;
-        
-        log.info("Checking if account exists - AccountID: {}", accountId);
+    public java.util.Map<String, Object> getAccountByNumber(String accountNumber) {
+        String url = accountServiceUrl + "/accounts/by-number/" + accountNumber;
+        log.info("Resolving account number: {}", accountNumber);
 
         try {
-            ResponseEntity<String> response = restTemplate.exchange(
+            ResponseEntity<java.util.Map> response = restTemplate.exchange(
                     url,
                     HttpMethod.GET,
                     null,
-                    String.class
+                    java.util.Map.class
             );
 
-            if (response.getStatusCode().is2xxSuccessful()) {
-                log.info("Account {} exists in database", accountId);
-                return true;
-            } else {
-                log.warn("Unexpected response when checking account existence: {}", response.getStatusCode());
-                return false;
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                return response.getBody();
             }
-
-        } catch (HttpClientErrorException e) {
-            if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
-                log.info("Account {} not found in database", accountId);
-                return false;
-            }
-            log.error("Client error while checking account existence: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
-            throw new AccountServiceException("Failed to check account existence: " + e.getMessage(), e);
-
-        } catch (HttpServerErrorException e) {
-            log.error("Server error from account service: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
-            throw new AccountServiceException("Account service is temporarily unavailable", e);
-
-        } catch (ResourceAccessException e) {
-            log.error("Timeout or connection error while calling account service", e);
-            throw new AccountServiceException("Cannot connect to account service - timeout", e);
-
+        } catch (HttpClientErrorException.NotFound e) {
+            log.warn("Account number not found: {}", accountNumber);
+            return null;
         } catch (Exception e) {
-            log.error("Unexpected error while checking account existence", e);
-            throw new AccountServiceException("Unexpected error: " + e.getMessage(), e);
+            log.error("Failed to resolve account number {}: {}", accountNumber, e.getMessage());
+            throw new AccountServiceException("Failed to resolve account number", e);
         }
+        return null;
     }
 
+    
     /**
      * Get userId by accountId.
      * Safely returns null if account is not found or external, ensuring transaction flow continues.
@@ -298,8 +280,8 @@ public class AccountServiceClient {
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 log.info("Internal transfer completed - TxID: {} - Sender new balance: {} - Receiver new balance: {}", 
                         transactionId, 
-                        response.getBody().getFromAccountNewBalance(),
-                        response.getBody().getToAccountNewBalance());
+                        response.getBody().getSenderAccountNewBalance(),
+                        response.getBody().getReceiverAccountNewBalance());
                 return response.getBody();
             } else {
                 log.error("Unexpected response from account service: {}", response.getStatusCode());

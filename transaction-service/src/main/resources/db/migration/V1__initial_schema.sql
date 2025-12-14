@@ -7,7 +7,7 @@
 CREATE TABLE IF NOT EXISTS transactions (
     transaction_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     sender_account_id VARCHAR(255) NOT NULL,
-    receiver_account_id VARCHAR(255) NOT NULL,
+    receiver_account_id VARCHAR(255),
     amount NUMERIC(19, 2) NOT NULL,
     fee_amount NUMERIC(19, 2) DEFAULT 0.00,
     description TEXT NOT NULL,

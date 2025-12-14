@@ -214,30 +214,6 @@ services:
   #   networks:
   #     - internal
 
-  # external-bank-mock:
-  #   build:
-  #     context: ./external-bank-mock
-  #     dockerfile: Dockerfile
-  #   container_name: external-bank-mock
-  #   environment:
-  #     SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/external-bank-db
-  #     SPRING_DATASOURCE_USERNAME: postgres
-  #     SPRING_DATASOURCE_PASSWORD: postgres
-  #     SPRING_RABBITMQ_HOST: rabbitmq
-  #     SPRING_RABBITMQ_PORT: 5672
-  #     SPRING_RABBITMQ_USERNAME: guest
-  #     SPRING_RABBITMQ_PASSWORD: guest
-  #     SERVER_PORT: 5000
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     rabbitmq:
-  #       condition: service_healthy
-  #   ports:
-  #     - "5000:5000"
-  #   networks:
-  #     - internal
-
   # reference-service:
   #   build:
   #     context: .

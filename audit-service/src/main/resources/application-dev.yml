@@ -19,6 +19,8 @@ spring:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
+    # Exclude outbox entities since audit-service doesn't need them
+    mapping-resources:
 
   flyway:
     enabled: true
@@ -39,6 +41,11 @@ spring:
   cloud:
     config:
       enabled: false
+
+# Outbox Pattern Configuration
+# Audit service doesn't need outbox pattern since it only consumes events
+outbox:
+  enabled: false
 
 eureka:
   client:
