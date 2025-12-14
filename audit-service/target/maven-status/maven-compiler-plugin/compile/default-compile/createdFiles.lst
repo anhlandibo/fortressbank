@@ -4,7 +4,6 @@ com\uit\auditservice\config\JpaConfig.class
 com\uit\auditservice\entity\TransactionAuditLog.class
 com\uit\auditservice\entity\TransactionAuditLog$TransactionAuditLogBuilder.class
 com\uit\auditservice\entity\UserAuditLog$UserAuditLogBuilder.class
-com\uit\auditservice\dto\AuditEventDto.class
 com\uit\auditservice\repository\TransactionAuditLogRepository.class
 com\uit\auditservice\controller\UserAuditController.class
 com\uit\auditservice\entity\AccountAuditLog$AccountAuditLogBuilder.class
@@ -15,5 +14,4 @@ com\uit\auditservice\controller\AccountAuditController.class
 com\uit\auditservice\repository\AccountAuditLogRepository.class
 com\uit\auditservice\AuditServiceApplication.class
 com\uit\auditservice\entity\UserAuditLog.class
-com\uit\auditservice\dto\AuditEventDto$AuditEventDtoBuilder.class
 com\uit\auditservice\repository\UserAuditLogRepository.class

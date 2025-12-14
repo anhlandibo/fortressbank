@@ -52,3 +52,7 @@ logging:
   level:
     com.uit.accountservice: DEBUG
     org.springframework.security: DEBUG
+
+outbox:
+  scheduler:
+    enabled: false

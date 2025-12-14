@@ -26,6 +26,10 @@ spring:
     username: guest
     password: guest
 
+outbox:
+  scheduler:
+    enabled: false
+
 eureka:
   client:
     serviceUrl:

@@ -1,5 +1,6 @@
 package com.uit.auditservice.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uit.sharedkernel.audit.AuditEventDto;
 import com.uit.auditservice.entity.AccountAuditLog;
 import com.uit.auditservice.entity.TransactionAuditLog;
@@ -20,6 +21,7 @@ public class AuditService {
     private final AccountAuditLogRepository accountAuditLogRepository;
     private final TransactionAuditLogRepository transactionAuditLogRepository;
     private final UserAuditLogRepository userAuditLogRepository;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public void logAuditEvent(AuditEventDto event) {
@@ -42,7 +44,18 @@ public class AuditService {
             }
         } catch (Exception e) {
             log.error("Failed to log audit event: {}", event, e);
-            throw e;
+            throw e; // Rethrow to let Consumer handle NACK/DLQ
+        }
+    }
+
+    private String toJson(Object object) {
+        if (object == null) return null;
+        try {
+            if (object instanceof String) return (String) object;
+            return objectMapper.writeValueAsString(object);
+        } catch (Exception e) {
+            log.warn("Failed to convert audit field to JSON: {}", object, e);
+            return String.valueOf(object);
         }
     }
 
@@ -55,12 +68,12 @@ public class AuditService {
                 .userId(event.getUserId())
                 .ipAddress(event.getIpAddress())
                 .userAgent(event.getUserAgent())
-                .oldValues(event.getOldValues())
-                .newValues(event.getNewValues())
+                .oldValues(toJson(event.getOldValues()))
+                .newValues(toJson(event.getNewValues()))
                 .changes(event.getChanges())
                 .result(event.getResult())
                 .errorMessage(event.getErrorMessage())
-                .metadata(event.getMetadata())
+                .metadata(toJson(event.getMetadata()))
                 .timestamp(event.getTimestamp())
                 .build();
 
@@ -77,12 +90,12 @@ public class AuditService {
                 .userId(event.getUserId())
                 .ipAddress(event.getIpAddress())
                 .userAgent(event.getUserAgent())
-                .oldValues(event.getOldValues())
-                .newValues(event.getNewValues())
+                .oldValues(toJson(event.getOldValues()))
+                .newValues(toJson(event.getNewValues()))
                 .changes(event.getChanges())
                 .result(event.getResult())
                 .errorMessage(event.getErrorMessage())
-                .metadata(event.getMetadata())
+                .metadata(toJson(event.getMetadata()))
                 .timestamp(event.getTimestamp())
                 .build();
 
@@ -99,12 +112,12 @@ public class AuditService {
                 .userId(event.getUserId())
                 .ipAddress(event.getIpAddress())
                 .userAgent(event.getUserAgent())
-                .oldValues(event.getOldValues())
-                .newValues(event.getNewValues())
+                .oldValues(toJson(event.getOldValues()))
+                .newValues(toJson(event.getNewValues()))
                 .changes(event.getChanges())
                 .result(event.getResult())
                 .errorMessage(event.getErrorMessage())
-                .metadata(event.getMetadata())
+                .metadata(toJson(event.getMetadata()))
                 .timestamp(event.getTimestamp())
                 .build();
 
