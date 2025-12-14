@@ -21,7 +21,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Optional;
 
 @RestController
 @RequestMapping("/accounts")
@@ -33,36 +32,48 @@ public class AccountController {
     private final AccountMapper accountMapper;
     private final TransferAuditService auditService;
     
-    //change this to check health for this endpoint
+    // change this to check health for this endpoint
     @GetMapping("/")
-    public Map<String, Object> healthCheck() {
-        return Map.of("status", "Account Service is running");
+    public ApiResponse<Map<String, String>> healthCheck() {
+        return ApiResponse.success(Map.of("status", "Account Service is running"));
     }
-    
+
     @GetMapping("/my-accounts")
     @RequireRole("user")
-    public Map<String, Object> getMyAccounts(HttpServletRequest request) {
+    public ApiResponse<Map<String, Object>> getMyAccountsWithUserInfo(HttpServletRequest request) {
         @SuppressWarnings("unchecked")
         Map<String, Object> userInfo = (Map<String, Object>) request.getAttribute("userInfo");
-        String userId = (String) userInfo.get("sub");
+        String userId = null;
+        if (userInfo != null && userInfo.get("sub") != null) {
+            userId = (String) userInfo.get("sub");
+        } else {
+            // Fallback to SecurityContext (when gateway doesn't set request attribute)
+            var authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            if (authentication != null) {
+                userId = authentication.getName();
+            }
+        }
+
+        if (userId == null) {
+            throw new com.uit.sharedkernel.exception.AppException(com.uit.sharedkernel.exception.ErrorCode.FORBIDDEN, "User not authenticated");
+        }
 
         List<AccountDto> accounts = accountService.getAccountsByUserId(userId);
-        
-        return Map.of(
+
+        return ApiResponse.success(Map.of(
             "message", "Your accounts",
             "user", userInfo,
             "accounts", accounts
-        );
+        ));
     }
 
-    
     @GetMapping("/dashboard")
     @RequireRole("admin")  // Like requireRole('admin') in Express
-    public Map<String, Object> getDashboard(HttpServletRequest request) {
-        return Map.of(
+    public ApiResponse<Map<String, Object>> getDashboard(HttpServletRequest request) {
+        return ApiResponse.success(Map.of(
             "message", "Admin Dashboard",
             "stats", Map.of("totalUsers", 42, "totalAccounts", 100)
-        );
+        ));
     }
 
     /**
@@ -141,19 +152,41 @@ public class AccountController {
     }
 
     /**
-     * Get all accounts.
+     * Get all accounts (Admin only).
      * Endpoint to retrieve a list of all accounts in the system.
      */
     @GetMapping("/all")
+    @RequireRole("admin")
     public ResponseEntity<List<AccountDto>> getAllAccounts() {
         List<AccountDto> accounts = accountService.getAllAccounts();
         return ResponseEntity.ok(accounts);
     }
 
-  
 
 
-    @GetMapping("/{accountId}")
+    // Section of BoLac
+    private String getCurrentUserId() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication.getName(); // Trả về 'sub' (userId)
+    }
+
+    // GET /accounts
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<AccountDto>>> getMyAccounts() {
+        List<AccountDto> accounts = accountService.getMyAccounts(getCurrentUserId());
+        return ResponseEntity.ok(ApiResponse.success(accounts));
+    }
+
+    // GET /accounts/lookup?accountNumber=xxx
+    // Used to check if an account exists before initiating a transfer
+    @GetMapping("/lookup")
+    public ResponseEntity<ApiResponse<AccountDto>> lookupAccountByAccountNumber(
+            @RequestParam("accountNumber") String accountNumber) {
+        AccountDto account = accountService.getAccountByAccountNumber(accountNumber);
+        return ResponseEntity.ok(ApiResponse.success(account));
+    }
+
+   @GetMapping("/{accountId}")
     public ResponseEntity<ApiResponse<AccountDto>> getAccountDetail(@PathVariable("accountId") String accountId) {
         AccountDto account = accountService.getAccountDetail(accountId, getCurrentUserId());
         return ResponseEntity.ok(ApiResponse.success(account));
@@ -186,11 +219,55 @@ public class AccountController {
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
-  
+    // POST /accounts/{id}/pin
+    @PostMapping("/{id}/pin")
+    public ResponseEntity<ApiResponse<Void>> createPin(@PathVariable("id") String id, @Valid @RequestBody PinRequest request) {
+        accountService.createPin(id, getCurrentUserId(), request.newPin());
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(null));
+    }
+
     // PUT /accounts/{id}/pin
     @PutMapping("/{id}/pin")
     public ResponseEntity<ApiResponse<Void>> updatePin(@PathVariable("id") String id, @Valid @RequestBody UpdatePinRequest request) {
         accountService.updatePin(id, getCurrentUserId(), request.oldPin(), request.newPin());
         return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    // POST /accounts/{accountId}/pin/verify
+    @PostMapping("/{accountId}/pin/verify")
+    public ResponseEntity<ApiResponse<Map<String, Boolean>>> verifyPin(
+            @PathVariable("accountId") String accountId,
+            @Valid @RequestBody VerifyPinRequest request) {
+        boolean isValid = accountService.verifyPin(accountId, getCurrentUserId(), request.pin());
+        return ResponseEntity.ok(ApiResponse.success(Map.of("valid", isValid)));
+    }
+
+    // ==================== PUBLIC ENDPOINTS (NO AUTH) ====================
+
+    /**
+     * Public endpoint to create PIN without authentication.
+     * Used after registration when user hasn't logged in yet.
+     */
+    @PostMapping("/public/{accountId}/pin")
+    public ResponseEntity<ApiResponse<Void>> createPinPublic(
+            @PathVariable("accountId") String accountId,
+            @Valid @RequestBody PinRequest request) {
+        accountService.createPinPublic(accountId, request.newPin());
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(null));
+    }
+
+    // ==================== INTERNAL ENDPOINTS ====================
+
+    /**
+     * Internal endpoint for user-service to create account during registration
+     * This endpoint is called by user-service via Feign Client
+     */
+    @PostMapping("/internal/create/{userId}")
+    public ResponseEntity<ApiResponse<AccountDto>> createAccountForUser(
+            @PathVariable("userId") String userId,
+            @Valid @RequestBody CreateAccountRequest request) {
+        AccountDto newAccount = accountService.createAccount(userId, request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(newAccount));
     }
 }

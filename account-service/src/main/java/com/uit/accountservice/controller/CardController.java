@@ -1,7 +1,6 @@
 package com.uit.accountservice.controller;
 
 import com.uit.accountservice.dto.CardDto;
-import com.uit.accountservice.dto.request.IssueCardRequest;
 import com.uit.accountservice.service.CardService;
 import com.uit.sharedkernel.api.ApiResponse;
 import lombok.RequiredArgsConstructor;
@@ -28,11 +27,11 @@ public class CardController {
         return ResponseEntity.ok(ApiResponse.success(cardService.getCardsByAccountId(accountId, getCurrentUserId())));
     }
 
-    // Phát hành thẻ mới
-    @PostMapping("/issue")
-    public ResponseEntity<ApiResponse<CardDto>> issueCard(@RequestBody IssueCardRequest request) {
+    // Phát hành thẻ mới VIRTUAL (Card type is always VIRTUAL)
+    @PostMapping("/account/{accountId}/issue")
+    public ResponseEntity<ApiResponse<CardDto>> issueCard(@PathVariable("accountId") String accountId) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success(cardService.issueCard(getCurrentUserId(), request)));
+                .body(ApiResponse.success(cardService.issueCard(getCurrentUserId(), accountId)));
     }
 
     // Khóa/Mở thẻ

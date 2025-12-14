@@ -27,10 +27,10 @@ public class Card {
     private String accountId;
 
     @Column(name = "card_number", unique = true, nullable = false, length = 16)
-    private String cardNumber; // 16 số
+    private String cardNumber; 
 
     @Column(name = "card_holder_name", nullable = false)
-    private String cardHolderName; // Tên in trên thẻ (Thường là không dấu)
+    private String cardHolderName; 
 
     @Column(name = "cvv_hash", nullable = false)
     private String cvvHash;
@@ -40,11 +40,11 @@ public class Card {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "card_type", nullable = false)
-    private CardType cardType; // PHYSICAL, VIRTUAL
+    private CardType cardType; 
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
-    private CardStatus status; // ACTIVE, LOCKED, EXPIRED
+    private CardStatus status; 
 
     @CreationTimestamp
     private LocalDateTime createdAt;

@@ -1,15 +1,23 @@
 package com.uit.userservice.service;
 
 import com.uit.userservice.dto.request.UpdateUserRequest;
+import com.uit.userservice.dto.response.AdminUserResponse;
 import com.uit.userservice.dto.response.UserResponse;
 import com.uit.userservice.entity.User;
+import com.uit.userservice.keycloak.KeycloakClient;
 import com.uit.userservice.repository.UserRepository;
 import com.uit.sharedkernel.exception.AppException;
 import com.uit.sharedkernel.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.oauth2.jwt.Jwt;
+
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -17,6 +25,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
+    private final KeycloakClient keycloakClient;
 
     @Override
     public UserResponse getCurrentUser(Jwt jwt) {
@@ -40,7 +49,9 @@ public class UserServiceImpl implements UserService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_ALREADY_EXISTS, "User not found"));
 
-        user.setFullName(request.fullName());
+        user.setFullName(request.getFullName());
+        user.setDob(request.getDob());
+        user.setPhoneNumber(request.getPhoneNumber());
 
         return toResponse(user);
     }
@@ -68,9 +79,65 @@ public class UserServiceImpl implements UserService {
                 user.getUsername(),
                 user.getEmail(),
                 user.getFullName(),
+                user.getCitizenId(),
+                user.getDob(),
+                user.getPhoneNumber(),
                 user.getCreatedAt()
         );
     }
 
+    // ADMIN SECTION
+    @Override
+    public Page<AdminUserResponse> searchUsers(String keyword, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        Page<User> usersPage = userRepository.searchUsers(keyword, pageable);
 
+        return usersPage.map(user -> new AdminUserResponse(
+                user.getId(),
+                user.getUsername(),
+                user.getEmail(),
+                user.getFullName(),
+                user.getCitizenId(),
+                user.getDob(),
+                user.getPhoneNumber(),
+                true,
+                user.getCreatedAt()
+        ));
+    }
+
+    @Override
+    public void lockUser(String userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        keycloakClient.updateUserStatus(user.getId(), false);
+    }
+
+    @Override
+    public void unlockUser(String userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        keycloakClient.updateUserStatus(user.getId(), true);
+    }
+
+    @Override
+    public AdminUserResponse getUserDetailForAdmin(String userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        // Lấy status thực tế từ Keycloak
+        Map<String, Object> keycloakInfo = keycloakClient.getUserFromKeycloak(userId);
+        boolean isEnabled = (boolean) keycloakInfo.getOrDefault("enabled", true);
+
+        return new AdminUserResponse(
+                user.getId(),
+                user.getUsername(),
+                user.getEmail(),
+                user.getFullName(),
+                user.getCitizenId(),
+                user.getDob(),
+                user.getPhoneNumber(),
+                isEnabled,
+                user.getCreatedAt()
+        );
+    }
 }

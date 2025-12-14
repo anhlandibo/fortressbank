@@ -46,6 +46,9 @@ public class KeycloakClient {
         return usersEndpoint() + "/" + userId + "/reset-password";
     }
 
+    private String userResourceEndpoint(String userId) {
+        return usersEndpoint() + "/" + userId;
+    }
     // =============== TOKEN FLOWS ===============
 
     public TokenResponse loginWithPassword(String username, String password) {
@@ -218,5 +221,44 @@ public class KeycloakClient {
     public void verifyPassword(String username, String oldPassword) {
         // nếu login thành công thì ok, nếu lỗi thì throw
         loginWithPassword(username, oldPassword);
+    }
+
+    // 1. Update User Status (Lock/Unlock)
+    public void updateUserStatus(String userId, boolean isEnabled) {
+        String adminToken = getAdminAccessToken();
+        String url = userResourceEndpoint(userId);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(adminToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        Map<String, Object> body = Map.of("enabled", isEnabled);
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+
+        try {
+            restTemplate.exchange(url, HttpMethod.PUT, entity, Void.class);
+        } catch (HttpStatusCodeException ex) {
+            log.error("Keycloak update status error: {}", ex.getResponseBodyAsString());
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
+
+    // 2. Get User Detail from Keycloak (để lấy real-time status)
+    public Map<String, Object> getUserFromKeycloak(String userId) {
+        String adminToken = getAdminAccessToken();
+        String url = userResourceEndpoint(userId);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(adminToken);
+
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+        try {
+            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, entity, Map.class);
+            return response.getBody();
+        } catch (HttpStatusCodeException ex) {
+            log.error("Keycloak get user error: {}", ex.getResponseBodyAsString());
+            throw new AppException(ErrorCode.USER_NOT_FOUND);
+        }
     }
 }

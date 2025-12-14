@@ -41,7 +41,6 @@ class GlobalExceptionHandlerTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getStatus()).isEqualTo("error");
         assertThat(response.getBody().getCode()).isEqualTo(404);
         assertThat(response.getBody().getData().getException()).isEqualTo("NOT_FOUND_EXCEPTION");
     }

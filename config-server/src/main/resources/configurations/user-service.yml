@@ -7,7 +7,7 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://keycloak:8080/realms/fortressbank-realm
+          jwk-set-uri: http://keycloak:8080/realms/fortressbank-realm/protocol/openid-connect/certs
 
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://user-service-db:5432/userdb}
@@ -22,6 +22,43 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+      timeout: 60000ms
+      jedis:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+
+  # Email Configuration - SendGrid
+  mail:
+    host: ${MAIL_HOST:smtp.sendgrid.net}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:apikey}
+    password: ${MAIL_PASSWORD}  # SendGrid API Key
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
+# Custom Email Configuration
+fortress-bank:
+  email:
+    from: ${EMAIL_FROM}  # Must be verified sender email
+    from-name: ${EMAIL_FROM_NAME:Fortress Bank}
+    otp:
+      subject: "Your OTP Code - Fortress Bank"
+      expiry-minutes: 5
 
 # Eureka Configuration
 eureka:
