@@ -3,6 +3,6 @@ spring:
     name: notification-service
   cloud:
     config:
-      enabled: false
       fail-fast: false
-      uri: http://localhost:8889
+      enabled: ${SPRING_CLOUD_CONFIG_ENABLED:true}
+      uri: ${SPRING_CLOUD_CONFIG_URI:http://localhost:8889}

@@ -67,6 +67,14 @@ services:
           - /products
         strip_path: false
 
+  - name: notification-service
+    url: http://notification-service:4002
+    routes:
+      - name: notification-service-route
+        paths:
+          - /notifications
+        strip_path: false
+
 
 
 # ============================================================================
@@ -74,7 +82,7 @@ services:
 # ============================================================================
 
 plugins:
-# --- Authentication: OpenID Connect via Keycloak ---
+  # --- Authentication: OpenID Connect via Keycloak ---
   # Single-device enforcement plugin (validates deviceId against Keycloak)
   # - name: single-device
   #   config:

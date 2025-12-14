@@ -15,7 +15,7 @@ import java.util.List;
 @Builder
 public class UserPreference {
     @Id
-    @Column(columnDefinition = "CHAR(36)", name = "user_id")
+    @Column(name = "user_id", length = 36)
     private String userId;
 
     @Column(name = "phone_number")
