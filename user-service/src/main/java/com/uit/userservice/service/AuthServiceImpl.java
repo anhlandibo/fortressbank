@@ -7,9 +7,11 @@ import com.uit.sharedkernel.outbox.OutboxEvent;
 import com.uit.sharedkernel.outbox.OutboxEventStatus;
 import com.uit.sharedkernel.outbox.repository.OutboxEventRepository;
 import com.uit.userservice.client.AccountClient;
+import com.uit.userservice.client.CardClient;
 import com.uit.userservice.client.CreateAccountInternalRequest;
 import com.uit.userservice.dto.request.*;
 import com.uit.userservice.dto.response.AccountDto;
+import com.uit.userservice.dto.response.CardDto;
 import com.uit.userservice.dto.response.OtpResponse;
 import com.uit.userservice.dto.response.TokenResponse;
 import com.uit.userservice.dto.response.UserResponse;
@@ -40,6 +42,7 @@ public class AuthServiceImpl implements AuthService {
     private final org.springframework.amqp.rabbit.core.RabbitTemplate rabbitTemplate;
     private final EmailService emailService;
     private final AccountClient accountClient;
+    private final CardClient cardClient;
 
     // ==================== NEW MULTI-STEP REGISTRATION FLOW ====================
 
@@ -134,6 +137,7 @@ public class AuthServiceImpl implements AuthService {
         }
 
         // Create account for user automatically
+        AccountDto account = null;
         try {
             log.info("Creating account for user {} with accountNumberType {}", user.getId(), request.getAccountNumberType());
             CreateAccountInternalRequest accountRequest = CreateAccountInternalRequest.builder()
@@ -142,13 +146,26 @@ public class AuthServiceImpl implements AuthService {
                     .pin(request.getPin())
                     .build();
 
-            AccountDto account = accountClient.createAccountForUser(user.getId(), accountRequest).getData();
+            account = accountClient.createAccountForUser(user.getId(), accountRequest).getData();
             log.info("Account created successfully for user {} with accountNumber {} and PIN set",
                     user.getId(), account.getAccountNumber());
         } catch (Exception e) {
             log.error("Failed to create account for user {}: {}", user.getId(), e.getMessage(), e);
-            // Don't fail registration if account creation fails
-            // User can create account manually later
+        }
+
+        // Create default VIRTUAL card automatically
+        if (account != null) {
+            try {
+                log.info("Creating default VIRTUAL card for user {} with accountId {}", user.getId(), account.getAccountId());
+                CardDto card = cardClient.issueCard(account.getAccountId(), user.getFullName()).getData();
+                log.info("Default VIRTUAL card created successfully for user {} with card number {}",
+                        user.getId(), card.getCardNumber());
+            } catch (Exception e) {
+                log.error("Failed to create default card for user {}: {}", user.getId(), e.getMessage(), e);
+                // Don't fail registration if card creation fails
+            }
+        } else {
+            log.warn("Card creation skipped: Account was not created for user {}", user.getId());
         }
 
         return new UserResponse(

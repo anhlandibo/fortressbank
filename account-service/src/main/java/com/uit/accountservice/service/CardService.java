@@ -54,7 +54,6 @@ public class CardService {
                 log.warn("User fullName is null for userId: {}. Using default cardHolderName.", userId);
             }
         } catch (Exception e) {
-            // Fallback: Nếu gọi user-service lỗi, có thể lấy từ Token hoặc để default
             log.error("Failed to fetch user info for card issuance for userId: {}. Error: {}", userId, e.getMessage());
         }
         String cardNumber = generateLuhnCardNumber();
@@ -147,5 +146,31 @@ public class CardService {
     private String getAccountHolderName(String userId) {
         // Tạm thời trả về tên cố định, sau này có thể gọi User Service để lấy tên thật
         return "NGO MINH TRI";
+    }
+
+    public CardDto issueCardInternal(String accountId, String fullName) {
+        // 1. Tìm Account để lấy UserId (Tin tưởng User Service đã tạo account thành công)
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND));
+                
+        String cardHolderName = (fullName != null) ? fullName.toUpperCase() : "UNKNOWN";
+        String cardNumber = generateLuhnCardNumber();
+        String cvv = generateRandomDigits(3);
+        LocalDate expiryDate = LocalDate.now().plusYears(5);
+
+        Card card = Card.builder()
+                .accountId(account.getAccountId())
+                .cardNumber(cardNumber)
+                .cardHolderName(cardHolderName)
+                .cvvHash(passwordEncoder.encode(cvv))
+                .expirationDate(expiryDate)
+                .cardType(CardType.VIRTUAL)
+                .status(CardStatus.ACTIVE)
+                .build();
+
+        cardRepository.save(card);
+        log.info("INTERNAL: VIRTUAL card issued for Account {} - User {}", accountId, cardHolderName);
+
+        return toDto(card);
     }
 }

@@ -40,4 +40,13 @@ public class CardController {
         cardService.toggleCardLock(cardId, getCurrentUserId());
         return ResponseEntity.ok(ApiResponse.success(null));
     }
+
+    @PostMapping("/internal/account/{accountId}/issue")
+    public ResponseEntity<ApiResponse<CardDto>> issueCardInternal(@PathVariable("accountId") String accountId, @RequestParam("fullName") String fullName) {
+    // Gọi method internal bên service
+    return ResponseEntity.status(HttpStatus.CREATED)
+            .body(ApiResponse.success(cardService.issueCardInternal(accountId, fullName)));
+}
+
+
 }

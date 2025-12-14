@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 
-@FeignClient(name = "account-service")
+@FeignClient(name = "account-service", contextId = "accountClient")
 public interface AccountClient {
 
     @PostMapping("/accounts/internal/create/{userId}")

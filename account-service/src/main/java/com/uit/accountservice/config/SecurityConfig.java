@@ -43,7 +43,7 @@ public class SecurityConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(@NonNull InterceptorRegistry registry) {
         registry.addInterceptor(roleCheckInterceptor)
-                .excludePathPatterns("/accounts/internal/**", "/accounts/public/**"); // Exclude internal and public endpoints from interceptor
+                .excludePathPatterns("/accounts/internal/**", "/accounts/public/**", "/cards/internal/**"); // Exclude internal and public endpoints from interceptor
     }
 
     @Bean
