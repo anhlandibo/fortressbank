@@ -348,10 +348,27 @@ public class AccountService {
                 .pinHash(pinHash)
                 .build();
 
-        log.info("Account created successfully - UserId: {} - AccountNumber: {} - Type: {}",
-                userId, accountNumber, request.accountNumberType());
+        log.info("Account created successfully - UserId: {} - AccountNumber: {}", userId, accountNumber);
 
         Account savedAccount = accountRepository.save(account);
+
+        try {
+            if (fullName == null || fullName.trim().isEmpty()) {
+                try {
+                    ApiResponse<UserResponse> userRes = userClient.getUserById(userId);
+                    if (userRes != null && userRes.getData() != null) {
+                        fullName = userRes.getData().fullName();
+                    }
+                } catch (Exception ex) {
+                    log.warn("Could not fetch user name for card creation via Feign: {}", ex.getMessage());
+                }
+            }
+            
+            cardService.createInitialCard(savedAccount, fullName);
+            
+        } catch (Exception e) {
+            log.error("Failed to auto-create card for account {}: {}", savedAccount.getAccountId(), e.getMessage());
+        }
 
         // Centralized Audit Log
         AuditEventDto auditEvent = AuditEventDto.builder()
@@ -371,27 +388,6 @@ public class AccountService {
                 .build();
         auditEventPublisher.publishAuditEvent(auditEvent);
 
-        return accountMapper.toDto(savedAccount);
-        Account savedAccount = accountRepository.save(account);
-        log.info("Account created successfully - UserId: {} - AccountNumber: {}", userId, accountNumber);
-
-        try {
-            if (fullName == null || fullName.trim().isEmpty()) {
-                try {
-                    ApiResponse<UserResponse> userRes = userClient.getUserById(userId);
-                    if (userRes != null && userRes.getData() != null) {
-                        fullName = userRes.getData().fullName();
-                    }
-                } catch (Exception ex) {
-                    log.warn("Could not fetch user name for card creation via Feign: {}", ex.getMessage());
-                }
-            }
-            
-            cardService.createInitialCard(savedAccount, fullName);
-            
-        } catch (Exception e) {
-            log.error("Failed to auto-create card for account {}: {}", savedAccount.getAccountId(), e.getMessage());
-        }
 
         return accountMapper.toDto(savedAccount);
     }
