@@ -31,7 +31,6 @@ public class CardService {
     private final PasswordEncoder passwordEncoder;
     private final UserClient userClient;
 
-    // LẤY DANH SÁCH THẺ
     public List<CardDto> getCardsByAccountId(String accountId, String userId) {
         validateAccountOwnership(accountId, userId);
 
@@ -40,7 +39,6 @@ public class CardService {
                 .collect(Collectors.toList());
     }
 
-    // PHÁT HÀNH THẺ MỚI (Card type is always VIRTUAL)
     public CardDto issueCard(String userId, String accountId){
         Account account = validateAccountOwnership(accountId, userId);
 
@@ -48,7 +46,6 @@ public class CardService {
         try {
             ApiResponse<UserResponse> response = userClient.getUserById(userId);
             if (response != null && response.getData() != null && response.getData().fullName() != null) {
-                // Tên trên thẻ thường viết hoa không dấu
                 cardHolderName = response.getData().fullName().toUpperCase();
             } else {
                 log.warn("User fullName is null for userId: {}. Using default cardHolderName.", userId);
@@ -66,9 +63,9 @@ public class CardService {
                 .accountId(account.getAccountId())
                 .cardNumber(cardNumber)
                 .cardHolderName(cardHolderName)
-                .cvvHash(passwordEncoder.encode(cvv)) // Hash CVV
+                .cvvHash(passwordEncoder.encode(cvv)) 
                 .expirationDate(expiryDate)
-                .cardType(CardType.VIRTUAL)  // Always VIRTUAL by default
+                .cardType(CardType.VIRTUAL) 
                 .status(CardStatus.ACTIVE)
                 .build();
 
@@ -77,6 +74,30 @@ public class CardService {
         log.info("VIRTUAL card issued successfully - CardNumber: {} (masked)", maskCardNumber(cardNumber));
 
         return toDto(card);
+    }
+
+    public void createInitialCard(Account account, String fullName) {
+        String cardHolderName = (fullName != null && !fullName.isEmpty()) ? fullName.toUpperCase() : "VALUED CUSTOMER";
+        
+        String cardNumber = generateLuhnCardNumber();
+        String cvv = generateRandomDigits(3);
+        LocalDate expiryDate = LocalDate.now().plusYears(5);
+
+        Card card = Card.builder()
+                .accountId(account.getAccountId())
+                .cardNumber(cardNumber)
+                .cardHolderName(cardHolderName)
+                .cvvHash(passwordEncoder.encode(cvv))
+                .expirationDate(expiryDate)
+                .cardType(CardType.VIRTUAL) 
+                .status(CardStatus.ACTIVE)
+                .build();
+
+        cardRepository.save(card);
+        
+        // Log thông tin quan trọng (Masked)
+        log.info("AUTO-CREATED: VIRTUAL card issued for Account {} - User: {} - Card: {}", 
+                account.getAccountId(), cardHolderName, maskCardNumber(cardNumber));
     }
 
     // --- KHÓA/MỞ THẺ ---

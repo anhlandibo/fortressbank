@@ -220,8 +220,28 @@ public class AccountController {
 
     // POST /accounts
     @PostMapping()
-    public ResponseEntity<ApiResponse<AccountDto>> createAccount(@Valid @RequestBody CreateAccountRequest request) {
-        AccountDto newAccount = accountService.createAccount(getCurrentUserId(), request);
+    public ResponseEntity<ApiResponse<AccountDto>> createAccount(
+        @Valid @RequestBody CreateAccountRequest request,
+        HttpServletRequest httpRequest
+    ) {
+        String userId = SecurityContextHolder.getContext().getAuthentication().getName();
+        String fullName = null;
+
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> userInfo = (Map<String, Object>) httpRequest.getAttribute("userInfo");
+            if (userInfo != null) {
+                if (userInfo.containsKey("name")) {
+                    fullName = (String) userInfo.get("name");
+                } 
+                else if (userInfo.containsKey("given_name")) {
+                    fullName = (String) userInfo.get("given_name");
+                }
+            }
+        } catch (Exception e) {
+            // Ignore error parsing name, service will handle fallback
+        }
+        AccountDto newAccount = accountService.createAccount(getCurrentUserId(), request, fullName);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(newAccount));
     }
@@ -279,8 +299,10 @@ public class AccountController {
     @PostMapping("/internal/create/{userId}")
     public ResponseEntity<ApiResponse<AccountDto>> createAccountForUser(
             @PathVariable("userId") String userId,
-            @Valid @RequestBody CreateAccountRequest request) {
-        AccountDto newAccount = accountService.createAccount(userId, request);
+            @Valid @RequestBody CreateAccountRequest request,
+            @RequestParam(value = "fullName", required = false) String fullName
+    ) {
+        AccountDto newAccount = accountService.createAccount(userId, request, fullName);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(newAccount));
     }
