@@ -1,0 +1,7 @@
+# Main docker-compose file - includes all services
+# Usage: docker compose up -d
+
+include:
+  - docker-compose.base.yml
+  - docker-compose.infra.yml
+  - docker-compose.services.yml

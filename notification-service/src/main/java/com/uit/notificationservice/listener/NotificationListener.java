@@ -63,7 +63,9 @@ public class NotificationListener {
         try {
             // Extract transaction details from message payload (matching transaction-service sender)
             String transactionId = (String) message.get("transactionId");
+            String senderUserId = (String) message.get("senderUserId");
             String senderAccountId = (String) message.get("senderAccountId");
+            String receiverUserId = (String) message.get("receiverUserId");
             String receiverAccountId = (String) message.get("receiverAccountId");
             Object amountObj = message.get("amount");
             String status = (String) message.get("status");
@@ -77,16 +79,16 @@ public class NotificationListener {
                 amount = new BigDecimal(amountObj.toString());
             }
 
-            log.info("Processing transaction notification - TxID: {}, SenderAccount: {}, ReceiverAccount: {}, Status: {}, Success: {}",
-                    transactionId, senderAccountId, receiverAccountId, status, success);
+            log.info("Processing transaction notification - TxID: {}, SenderUser: {}, SenderAccount: {}, ReceiverUser: {}, ReceiverAccount: {}, Status: {}, Success: {}",
+                    transactionId, senderUserId, senderAccountId, receiverUserId, receiverAccountId, status, success);
 
             // ========== SENDER NOTIFICATION (Money Deducted) ==========
-            log.info("Processing sender notification for account: {}", senderAccountId);
+            log.info("Processing sender notification for user: {} (account: {})", senderUserId, senderAccountId);
             
-            UserPreference senderPreference = userPreferenceRepo.findById(senderAccountId)
+            UserPreference senderPreference = userPreferenceRepo.findById(senderUserId)
                     .orElseGet(() -> {
-                        log.warn("User preference not found for sender account: {}, using defaults", senderAccountId);
-                        return createDefaultPreference(senderAccountId);
+                        log.warn("User preference not found for sender user: {}, using defaults", senderUserId);
+                        return createDefaultPreference(senderUserId);
                     });
 
             // Build sender notification (money deducted)
@@ -94,21 +96,21 @@ public class NotificationListener {
             String senderContent = formatSenderNotification(success, amount, receiverAccountId, status, notificationMessage);
 
             // Send Push Notification to Sender
-            sendPushNotification(senderAccountId, senderPreference, transactionId, senderTitle, senderContent);
+            sendPushNotification(senderUserId, senderPreference, transactionId, senderTitle, senderContent);
             
             // Send Email Notification to Sender
-            sendEmailNotification(senderAccountId, senderPreference, transactionId, senderTitle, 
+            sendEmailNotification(senderUserId, senderPreference, transactionId, senderTitle,
                                  senderContent, status, amount, success, "Recipient", receiverAccountId);
 
             // ========== RECEIVER NOTIFICATION (Money Received) ==========
             // Only send to receiver if transaction is successful
             if (success) {
-                log.info("Processing receiver notification for account: {}", receiverAccountId);
+                log.info("Processing receiver notification for user: {} (account: {})", receiverUserId, receiverAccountId);
                 
-                UserPreference receiverPreference = userPreferenceRepo.findById(receiverAccountId)
+                UserPreference receiverPreference = userPreferenceRepo.findById(receiverUserId)
                         .orElseGet(() -> {
-                            log.warn("User preference not found for receiver account: {}, using defaults", receiverAccountId);
-                            return createDefaultPreference(receiverAccountId);
+                            log.warn("User preference not found for receiver user: {}, using defaults", receiverUserId);
+                            return createDefaultPreference(receiverUserId);
                         });
 
                 // Build receiver notification (money received)
@@ -116,10 +118,10 @@ public class NotificationListener {
                 String receiverContent = formatReceiverNotification(amount, senderAccountId);
 
                 // Send Push Notification to Receiver
-                sendPushNotification(receiverAccountId, receiverPreference, transactionId, receiverTitle, receiverContent);
+                sendPushNotification(receiverUserId, receiverPreference, transactionId, receiverTitle, receiverContent);
                 
                 // Send Email Notification to Receiver
-                sendEmailNotification(receiverAccountId, receiverPreference, transactionId, receiverTitle, 
+                sendEmailNotification(receiverUserId, receiverPreference, transactionId, receiverTitle,
                                      receiverContent, status, amount, true, "Sender", senderAccountId);
             }
 

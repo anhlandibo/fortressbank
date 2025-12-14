@@ -46,7 +46,7 @@ Ensure you have the following installed:
 The Java services are built using Maven. From the project root directory, run:
 
 ```bash
-mvn clean install
+mvn clean install -DskipTests
 ```
 
 ### 2.3. Running the Application with Docker Compose
@@ -55,11 +55,11 @@ The entire application stack is managed via Docker Compose.
 
 1.  **Start all services:**
     ```bash
-    docker-compose -f docker-compose.base.yml -f docker-compose.infra.yml -f docker-compose.services.yml up -d --build
+    docker-compose up -d --build
     ```
 2.  **Monitor Startup:** It's recommended to monitor the logs during startup to ensure all services come up cleanly.
     ```bash
-    docker-compose -f docker-compose.base.yml -f docker-compose.infra.yml -f docker-compose.services.yml logs -f
+    docker-compose logs -f
     ```
     *   **Note:** Initial startup, especially for Keycloak, can take several minutes. Be patient.
 
