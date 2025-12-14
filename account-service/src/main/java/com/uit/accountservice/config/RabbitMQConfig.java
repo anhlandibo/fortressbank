@@ -8,7 +8,7 @@ import org.springframework.amqp.core.TopicExchange;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-@Configuration
+@Configuration("accountRabbitConfig")
 public class RabbitMQConfig {
 
     public static final String QUEUE = RabbitMQConstants.NOTIFICATION_TRANSFER_QUEUE;

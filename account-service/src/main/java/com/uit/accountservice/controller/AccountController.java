@@ -144,12 +144,7 @@ public class AccountController {
         return authentication.getName(); // Trả về 'sub' (userId)
     }
 
-    // GET /accounts
-    @GetMapping
-    public ResponseEntity<ApiResponse<List<AccountDto>>> getMyAccounts() {
-        List<AccountDto> accounts = accountService.getMyAccounts(getCurrentUserId());
-        return ResponseEntity.ok(ApiResponse.success(accounts));
-    }
+    
 
     /**
      * Get all accounts (Admin only).
@@ -164,11 +159,7 @@ public class AccountController {
 
 
 
-    // Section of BoLac
-    private String getCurrentUserId() {
-        var authentication = SecurityContextHolder.getContext().getAuthentication();
-        return authentication.getName(); // Trả về 'sub' (userId)
-    }
+    
 
     // GET /accounts
     @GetMapping

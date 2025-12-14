@@ -20,6 +20,8 @@ import com.uit.accountservice.riskengine.dto.RiskAssessmentResponse;
 import com.uit.sharedkernel.api.ApiResponse;
 import com.uit.sharedkernel.exception.AppException;
 import com.uit.sharedkernel.exception.ErrorCode;
+import com.uit.sharedkernel.audit.AuditEventDto;
+import com.uit.sharedkernel.audit.AuditEventPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -33,6 +35,7 @@ import java.math.BigDecimal;
 
 import java.security.SecureRandom;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -50,7 +53,8 @@ public class AccountService {
     private final RiskEngineService riskEngineService;
     private final RedisTemplate<String, Object> redisTemplate;
     private final WebClient.Builder webClientBuilder;
-    private final TransferAuditService auditService;
+    private final TransferAuditService auditService; // Local DB audit
+    private final AuditEventPublisher auditEventPublisher; // Centralized RabbitMQ audit
     private final PasswordEncoder passwordEncoder;
     private final UserClient userClient;
 
@@ -330,7 +334,27 @@ public class AccountService {
         log.info("Account created successfully - UserId: {} - AccountNumber: {} - Type: {}",
                 userId, accountNumber, request.accountNumberType());
 
-        return accountMapper.toDto(accountRepository.save(account));
+        Account savedAccount = accountRepository.save(account);
+
+        // Centralized Audit Log
+        AuditEventDto auditEvent = AuditEventDto.builder()
+                .serviceName("account-service")
+                .entityType("Account")
+                .entityId(savedAccount.getAccountId())
+                .action("CREATE_ACCOUNT")
+                .userId(userId)
+                .newValues(Map.of(
+                    "accountNumber", accountNumber,
+                    "status", AccountStatus.ACTIVE.toString(),
+                    "currency", "VND", // Assuming VND default
+                    "accountNumberType", request.accountNumberType()
+                ))
+                .changes("New account opened")
+                .result("SUCCESS")
+                .build();
+        auditEventPublisher.publishAuditEvent(auditEvent);
+
+        return accountMapper.toDto(savedAccount);
     }
 
     /**
@@ -367,6 +391,19 @@ public class AccountService {
 
         account.setStatus(AccountStatus.CLOSED);
         accountRepository.save(account);
+
+        // Centralized Audit Log
+        AuditEventDto auditEvent = AuditEventDto.builder()
+                .serviceName("account-service")
+                .entityType("Account")
+                .entityId(accountId)
+                .action("CLOSE_ACCOUNT")
+                .userId(userId)
+                .newValues(Map.of("status", AccountStatus.CLOSED.toString()))
+                .changes("Account closed by user")
+                .result("SUCCESS")
+                .build();
+        auditEventPublisher.publishAuditEvent(auditEvent);
     }
 
     @Transactional

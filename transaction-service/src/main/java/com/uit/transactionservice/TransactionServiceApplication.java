@@ -12,14 +12,14 @@ import io.github.cdimascio.dotenv.Dotenv;
 @EnableScheduling
 @ComponentScan(basePackages = {
         "com.uit.transactionservice",
-        "com.uit.sharedkernel" // để GlobalExceptionHandler được scan
-})// Add this line
+        "com.uit.sharedkernel" 
+})
 public class TransactionServiceApplication {
 
     public static void main(String[] args) {
         Dotenv dotenv = Dotenv.configure()
-                .directory("./") // Đường dẫn tới file .env (thư mục gốc)
-                .ignoreIfMissing() // Để khi deploy lên server thật (không có file .env) thì không bị lỗi
+                .directory("./") 
+                .ignoreIfMissing() 
                 .load();
 
         dotenv.entries().forEach(entry -> {

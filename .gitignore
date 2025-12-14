@@ -43,3 +43,4 @@ GEMINI.md
 .env
 .env.local
 .env.*.local
+.gemini

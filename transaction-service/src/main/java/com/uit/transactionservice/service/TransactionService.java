@@ -23,6 +23,8 @@ import com.uit.transactionservice.dto.stripe.StripeTransferRequest;
 import com.uit.transactionservice.dto.stripe.StripeTransferResponse;
 import com.uit.transactionservice.dto.SepayWebhookDto;
 import com.uit.transactionservice.dto.sse.TransactionStatusUpdate;
+import com.uit.sharedkernel.audit.AuditEventDto;
+import com.uit.sharedkernel.audit.AuditEventPublisher;
 import com.stripe.exception.StripeException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -52,6 +54,7 @@ public class TransactionService {
     private final AccountServiceClient accountServiceClient;
     private final StripeTransferService stripeTransferService;
     private final TransactionSseService sseService;
+    private final AuditEventPublisher auditEventPublisher;
     
     /**
      * Handle SePay webhook for Top-up (Deposit)
@@ -529,6 +532,24 @@ public class TransactionService {
                     transferResponse.getSenderAccountNewBalance(),
                     transferResponse.getReceiverAccountNewBalance());
             
+            // Centralized Audit Log
+            AuditEventDto auditEvent = AuditEventDto.builder()
+                    .serviceName("transaction-service")
+                    .entityType("Transaction")
+                    .entityId(transaction.getTransactionId().toString())
+                    .action("INTERNAL_TRANSFER")
+                    .userId(transaction.getSenderUserId())
+                    .newValues(Map.of(
+                        "senderAccountId", transaction.getSenderAccountId(),
+                        "receiverAccountId", transaction.getReceiverAccountId(),
+                        "amount", totalAmount,
+                        "status", TransactionStatus.COMPLETED.toString()
+                    ))
+                    .changes("Internal transfer completed")
+                    .result("SUCCESS")
+                    .build();
+            auditEventPublisher.publishAuditEvent(auditEvent);
+
             return transactionMapper.toResponse(transaction);
 
         } catch (InsufficientBalanceException e) {
@@ -660,6 +681,26 @@ public class TransactionService {
             // Send notification that transfer is being processed
             sendTransactionNotification(transaction, "ExternalTransferInitiated", false);
             
+            // Centralized Audit Log
+            AuditEventDto auditEvent = AuditEventDto.builder()
+                    .serviceName("transaction-service")
+                    .entityType("Transaction")
+                    .entityId(transaction.getTransactionId().toString())
+                    .action("EXTERNAL_TRANSFER_INIT")
+                    .userId(transaction.getSenderUserId())
+                    .newValues(Map.of(
+                        "senderAccountId", transaction.getSenderAccountId(),
+                        "receiverAccountNumber", transaction.getReceiverAccountNumber(),
+                        "amount", totalAmount,
+                        "destinationBank", transaction.getDestinationBankCode() != null ? transaction.getDestinationBankCode() : "Stripe",
+                        "stripeTransferId", transaction.getStripeTransferId(),
+                        "status", TransactionStatus.PENDING.toString()
+                    ))
+                    .changes("External transfer initiated via Stripe")
+                    .result("PENDING")
+                    .build();
+            auditEventPublisher.publishAuditEvent(auditEvent);
+
             return transactionMapper.toResponse(transaction);
 
         } catch (InsufficientBalanceException e) {
@@ -818,6 +859,22 @@ public class TransactionService {
         sseService.pushUpdate(transaction.getTransactionId().toString(), sseUpdate);
         
         sendTransactionNotification(transaction, "TransactionCompleted", true);
+
+        // Centralized Audit Log
+        AuditEventDto auditEvent = AuditEventDto.builder()
+                .serviceName("transaction-service")
+                .entityType("Transaction")
+                .entityId(transaction.getTransactionId().toString())
+                .action("EXTERNAL_TRANSFER_COMPLETED")
+                .userId(transaction.getSenderUserId())
+                .newValues(Map.of(
+                    "stripeTransferId", transaction.getStripeTransferId(),
+                    "status", TransactionStatus.COMPLETED.toString()
+                ))
+                .changes("External transfer confirmed by Stripe webhook")
+                .result("SUCCESS")
+                .build();
+        auditEventPublisher.publishAuditEvent(auditEvent);
     }
 
     /**
@@ -933,6 +990,25 @@ public class TransactionService {
         sseService.pushUpdate(transaction.getTransactionId().toString(), sseUpdate);
         
         sendTransactionNotification(transaction, "TransactionFailed", false);
+
+        // Centralized Audit Log
+        AuditEventDto auditEvent = AuditEventDto.builder()
+                .serviceName("transaction-service")
+                .entityType("Transaction")
+                .entityId(transaction.getTransactionId().toString())
+                .action("EXTERNAL_TRANSFER_FAILED")
+                .userId(transaction.getSenderUserId())
+                .newValues(Map.of(
+                    "stripeTransferId", transaction.getStripeTransferId() != null ? transaction.getStripeTransferId() : "",
+                    "failureReason", failureMessage,
+                    "status", TransactionStatus.FAILED.toString(),
+                    "rollbackStatus", transaction.getStatus().toString()
+                ))
+                .errorMessage(failureMessage)
+                .changes("External transfer failed and rolled back")
+                .result("FAILURE")
+                .build();
+        auditEventPublisher.publishAuditEvent(auditEvent);
     }
     
 
