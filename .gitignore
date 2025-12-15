@@ -62,3 +62,6 @@ kong/certs/
 # Secrets directories
 secrets/
 .secrets/
+
+# AI/Tool directories
+.gemini

@@ -1,9 +1,9 @@
 package com.uit.sharedkernel.outbox;
 
+import com.uit.sharedkernel.amqp.RabbitMQMessageProducer;
 import com.uit.sharedkernel.outbox.repository.OutboxEventRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -20,12 +20,12 @@ import java.util.stream.Stream;
 public class OutboxScheduler {
 
     private final OutboxEventRepository outboxEventRepository;
-    private final RabbitTemplate rabbitTemplate;
+    private final RabbitMQMessageProducer rabbitMQMessageProducer;
 
     private static final int MAX_RETRY_COUNT = 3;
     private static final int RETRY_MINUTES_DELAY = 5;
 
-    @Scheduled(fixedDelayString = "${outbox.scheduler.fixed-delay:5000}", initialDelayString = "${outbox.scheduler.initial-delay:10000}")
+    // @Scheduled(fixedDelayString = "${outbox.scheduler.fixed-delay:5000}", initialDelayString = "${outbox.scheduler.initial-delay:10000}")
     @Transactional
     public void processOutboxEvents() {
         log.debug("Starting outbox scheduler job...");
@@ -53,10 +53,10 @@ public class OutboxScheduler {
             event.setStatus(OutboxEventStatus.PROCESSING);
             outboxEventRepository.save(event);
 
-            rabbitTemplate.convertAndSend(
+            rabbitMQMessageProducer.publish(
+                    event.getPayload(),
                     event.getExchange(),
-                    event.getRoutingKey(),
-                    event.getPayload()
+                    event.getRoutingKey()
             );
 
             event.setStatus(OutboxEventStatus.COMPLETED);

@@ -178,6 +178,71 @@ public class AccountServiceClient {
     }
 
     /**
+     * Get account details by account number.
+     * Returns Map with account info if found, or null if not found (404).
+     */
+    public java.util.Map<String, Object> getAccountByNumber(String accountNumber) {
+        String url = accountServiceUrl + "/accounts/by-number/" + accountNumber;
+        log.info("Resolving account number: {}", accountNumber);
+
+        try {
+            ResponseEntity<java.util.Map> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    null,
+                    java.util.Map.class
+            );
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                return response.getBody();
+            }
+        } catch (HttpClientErrorException.NotFound e) {
+            log.warn("Account number not found: {}", accountNumber);
+            return null;
+        } catch (Exception e) {
+            log.error("Failed to resolve account number {}: {}", accountNumber, e.getMessage());
+            throw new AccountServiceException("Failed to resolve account number", e);
+        }
+        return null;
+    }
+
+    
+    /**
+     * Get userId by accountId.
+     * Safely returns null if account is not found or external, ensuring transaction flow continues.
+     */
+    public String getUserIdByAccountId(String accountId) {
+        if (accountId == null) return null;
+        
+        String url = accountServiceUrl + "/accounts/" + accountId;
+        log.debug("Resolving userId for account: {}", accountId);
+
+        try {
+            ResponseEntity<java.util.Map> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    null,
+                    java.util.Map.class
+            );
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Object userIdObj = response.getBody().get("userId");
+                if (userIdObj != null) {
+                    return userIdObj.toString();
+                }
+            }
+        } catch (HttpClientErrorException.NotFound e) {
+            // Normal for external accounts
+            log.warn("Account not found in local DB (likely external): {}", accountId);
+        } catch (Exception e) {
+            // Suppress other errors to avoid breaking the flow
+            log.warn("Failed to resolve userId for account {}: {}", accountId, e.getMessage());
+        }
+        
+        return null;
+    }
+
+    /**
      * Execute internal transfer atomically (RECOMMENDED).
      * Both debit and credit happen in a single database transaction.
      * Either both succeed or both fail - no partial state.
@@ -219,8 +284,8 @@ public class AccountServiceClient {
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 log.info("Internal transfer completed - TxID: {} - Sender new balance: {} - Receiver new balance: {}", 
                         transactionId, 
-                        response.getBody().getFromAccountNewBalance(),
-                        response.getBody().getToAccountNewBalance());
+                        response.getBody().getSenderAccountNewBalance(),
+                        response.getBody().getReceiverAccountNewBalance());
                 return response.getBody();
             } else {
                 log.error("Unexpected response from account service: {}", response.getStatusCode());

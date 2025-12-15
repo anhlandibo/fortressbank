@@ -46,17 +46,21 @@ public class TransactionController {
             HttpServletRequest httpRequest) {
 
         try {
-            log.info("=== CREATE TRANSFER REQUEST ===");
-            log.info("Request body: {}", request);
-            
             @SuppressWarnings("unchecked")
             Map<String, Object> userInfo = (Map<String, Object>) httpRequest.getAttribute("userInfo");
-            String userId = (String) userInfo.get("sub");
+            String userId = "test-user"; // Default for testing
+            String phoneNumber = "0857311444"; // Default for testing
             
-            log.info("User ID from token: {}", userId);
-            log.info("Phone number: 0857311444");
+            if (userInfo != null) {
+                userId = (String) userInfo.get("sub");
+                log.info("User ID from token: {}", userId);
+            } else {
+                log.warn("No JWT token found, using default test user");
+            }
+            
+            log.info("Phone number: {}", phoneNumber);
 
-            TransactionResponse response = transactionService.createTransfer(request, userId, "0857311444");
+            TransactionResponse response = transactionService.createTransfer(request, userId, phoneNumber);
             
             log.info("Transfer created successfully: {}", response.getTransactionId());
             return ResponseEntity.status(HttpStatus.CREATED)

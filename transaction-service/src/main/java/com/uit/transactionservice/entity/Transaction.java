@@ -10,8 +10,9 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "transactions", indexes = {
-    @Index(name = "idx_sender_date", columnList = "sender_account_id,created_at"),
-    @Index(name = "idx_receiver_date", columnList = "receiver_account_id,created_at"),
+    @Index(name = "idx_sender_id_date", columnList = "sender_account_id,created_at"),
+    @Index(name = "idx_sender_num_date", columnList = "sender_account_number,created_at"),
+    @Index(name = "idx_receiver_num_date", columnList = "receiver_account_number,created_at"),
     @Index(name = "idx_status_date", columnList = "status,created_at"),
     @Index(name = "idx_correlation_id", columnList = "correlation_id"),
     @Index(name = "idx_current_step", columnList = "current_step")
@@ -32,8 +33,20 @@ public class Transaction {
     @Column(name = "sender_account_id", nullable = false)
     private String senderAccountId;
 
-    @Column(name = "receiver_account_id", nullable = false)
+    @Column(name = "sender_account_number", nullable = false)
+    private String senderAccountNumber;
+
+    @Column(name = "sender_user_id")
+    private String senderUserId;
+
+    @Column(name = "receiver_account_id")
     private String receiverAccountId;
+
+    @Column(name = "receiver_user_id")
+    private String receiverUserId;
+
+    @Column(name = "receiver_account_number", nullable = false)
+    private String receiverAccountNumber;
 
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal amount;
@@ -70,6 +83,44 @@ public class Transaction {
      */
     @Column(name = "destination_bank_code", length = 50)
     private String destinationBankCode;
+
+    // ========== Stripe Transfer Fields ==========
+    
+    /**
+     * Stripe transfer ID returned from Stripe API
+     */
+    @Column(name = "stripe_transfer_id", length = 100)
+    private String stripeTransferId;
+
+    /**
+     * Current status of Stripe transfer: completed, failed, reversed
+     */
+    @Column(name = "stripe_transfer_status", length = 50)
+    private String stripeTransferStatus;
+
+    /**
+     * Stripe failure code if transfer failed
+     */
+    @Column(name = "stripe_failure_code", length = 100)
+    private String stripeFailureCode;
+
+    /**
+     * Stripe failure message if transfer failed
+     */
+    @Column(name = "stripe_failure_message", columnDefinition = "TEXT")
+    private String stripeFailureMessage;
+
+    /**
+     * Timestamp when webhook was received from Stripe
+     */
+    @Column(name = "webhook_received_at")
+    private LocalDateTime webhookReceivedAt;
+
+    /**
+     * Idempotency key for duplicate webhook prevention
+     */
+    @Column(name = "idempotency_key", unique = true, length = 100)
+    private String idempotencyKey;
 
     // ========== Saga Orchestration Fields ==========
     

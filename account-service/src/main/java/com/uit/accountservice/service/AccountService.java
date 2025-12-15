@@ -1,5 +1,6 @@
 package com.uit.accountservice.service;
 
+import com.uit.accountservice.client.UserClient;
 import com.uit.accountservice.dto.AccountDto;
 import com.uit.accountservice.dto.PendingTransfer;
 import com.uit.accountservice.dto.request.CreateAccountRequest;
@@ -7,6 +8,7 @@ import com.uit.accountservice.dto.request.SendSmsOtpRequest;
 import com.uit.accountservice.dto.request.TransferRequest;
 import com.uit.accountservice.dto.request.VerifyTransferRequest;
 import com.uit.accountservice.dto.response.ChallengeResponse;
+import com.uit.accountservice.dto.response.UserResponse;
 import com.uit.accountservice.entity.Account;
 import com.uit.accountservice.entity.enums.AccountStatus;
 import com.uit.accountservice.entity.enums.TransferStatus;
@@ -15,8 +17,11 @@ import com.uit.accountservice.repository.AccountRepository;
 import com.uit.accountservice.riskengine.RiskEngineService;
 import com.uit.accountservice.riskengine.dto.RiskAssessmentRequest;
 import com.uit.accountservice.riskengine.dto.RiskAssessmentResponse;
+import com.uit.sharedkernel.api.ApiResponse;
 import com.uit.sharedkernel.exception.AppException;
 import com.uit.sharedkernel.exception.ErrorCode;
+import com.uit.sharedkernel.audit.AuditEventDto;
+import com.uit.sharedkernel.audit.AuditEventPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -30,11 +35,12 @@ import java.math.BigDecimal;
 
 import java.security.SecureRandom;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-@Slf4j  
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AccountService {
@@ -47,8 +53,12 @@ public class AccountService {
     private final RiskEngineService riskEngineService;
     private final RedisTemplate<String, Object> redisTemplate;
     private final WebClient.Builder webClientBuilder;
-    private final TransferAuditService auditService;
+    private final TransferAuditService auditService; // Local DB audit
+    private final AuditEventPublisher auditEventPublisher; // Centralized RabbitMQ audit
     private final PasswordEncoder passwordEncoder;
+    private final UserClient userClient;
+    private final CardService cardService;
+
 
     public List<AccountDto> getAccountsByUserId(String userId) {
         return accountRepository.findByUserId(userId)
@@ -64,289 +74,18 @@ public class AccountService {
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Validates if the given user owns the specified account.
-     * Used for authorization checks before allowing account operations.
-     * 
-     * @param accountId the account ID to check
-     * @param username the username (subject from JWT)
-     * @return true if the user owns the account, false otherwise
-     */
-    public boolean isOwner(String accountId, String username) {
-        if (accountId == null || username == null) {
-            return false;
-        }
-        
-        return accountRepository.findById(accountId)
-                .map(account -> account.getUserId().equals(username))
-                .orElse(false);
-    }
-
-    @Transactional
-    public Object handleTransfer(TransferRequest transferRequest, String userId, 
-                                 String deviceFingerprint, String ipAddress, String location) {
-        // Security checks
-        Account sourceAccount = accountRepository.findById(transferRequest.getSenderAccountId())
-                .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Source account not found"));
-
-        if (!sourceAccount.getUserId().equals(userId)) {
-            // Audit: Unauthorized access attempt
-            auditService.logTransfer(
-                    userId,
-                    transferRequest.getSenderAccountId(),
-                    transferRequest.getReceiverAccountId(),
-                    transferRequest.getAmount(),
-                    TransferStatus.FAILED,
-                    null,
-                    null,
-                    deviceFingerprint,
-                    ipAddress,
-                    location,
-                    "Unauthorized: User does not own source account"
-            );
-            throw new AppException(ErrorCode.FORBIDDEN);
-        }
-
-        if (sourceAccount.getBalance().compareTo(transferRequest.getAmount()) < 0) {
-            // Audit: Insufficient funds
-            auditService.logTransfer(
-                    userId,
-                    transferRequest.getSenderAccountId(),
-                    transferRequest.getReceiverAccountId(),
-                    transferRequest.getAmount(),
-                    TransferStatus.FAILED,
-                    null,
-                    null,
-                    deviceFingerprint,
-                    ipAddress,
-                    location,
-                    "Insufficient funds"
-            );
-            throw new AppException(ErrorCode.INSUFFICIENT_FUNDS);
-        }
-
-        // Risk assessment with enhanced fraud detection
-        RiskAssessmentResponse riskAssessment;
-        try {
-            riskAssessment = riskEngineService.assessRisk(
-                    RiskAssessmentRequest.builder()
-                            .amount(transferRequest.getAmount())
-                            .userId(userId)
-                            .payeeId(transferRequest.getReceiverAccountId())
-                            .deviceFingerprint(deviceFingerprint)
-                            .ipAddress(ipAddress)
-                            .location(location)
-                            .build());
-        } catch (Exception e) {
-            // Audit: Risk assessment failed
-            auditService.logTransfer(
-                    userId,
-                    transferRequest.getSenderAccountId(),
-                    transferRequest.getReceiverAccountId(),
-                    transferRequest.getAmount(),
-                    TransferStatus.FAILED,
-                    null,
-                    null,
-                    deviceFingerprint,
-                    ipAddress,
-                    location,
-                    "Risk assessment service unavailable"
-            );
-            throw new AppException(ErrorCode.RISK_ASSESSMENT_FAILED);
-        }
-
-        if (!riskAssessment.getRiskLevel().equals("LOW")) {
-            // Step-up authentication required
-            String challengeId = UUID.randomUUID().toString();
-            String otpCode = String.valueOf(100000 + (int) (Math.random() * 900000));
-
-            // Send OTP via notification-service
-            try {
-                webClientBuilder.build()
-                    .post()
-                    .uri("http://notification-service:4002/notifications/sms/send-otp")
-                    .bodyValue(new SendSmsOtpRequest(HARDCODED_PHONE_NUMBER, otpCode))
-                    .retrieve()
-                    .bodyToMono(Void.class)
-                    .block();  
-            } catch (Exception e) {
-                log.error("Failed to send OTP", e);
-                // Audit: OTP sending failed
-                auditService.logTransfer(
-                        userId,
-                        transferRequest.getSenderAccountId(),
-                        transferRequest.getReceiverAccountId(),
-                        transferRequest.getAmount(),
-                        TransferStatus.FAILED,
-                        riskAssessment.getRiskLevel(),
-                        riskAssessment.getChallengeType(),
-                        deviceFingerprint,
-                        ipAddress,
-                        location,
-                        "Failed to send OTP"
-                );
-                throw new AppException(ErrorCode.NOTIFICATION_SERVICE_FAILED);
-            }
-
-            // Store pending transfer in Redis
-            PendingTransfer pendingTransfer = new PendingTransfer(
-                    transferRequest, 
-                    otpCode, 
-                    userId, 
-                    deviceFingerprint, 
-                    ipAddress, 
-                    location,
-                    riskAssessment.getRiskLevel(),
-                    riskAssessment.getChallengeType()
-            );
-            redisTemplate.opsForValue().set("transfer:" + challengeId, pendingTransfer, 5, TimeUnit.MINUTES);
-
-            // Audit: Challenge issued (pending OTP verification)
-            auditService.logTransfer(
-                    userId,
-                    transferRequest.getSenderAccountId(),
-                    transferRequest.getReceiverAccountId(),
-                    transferRequest.getAmount(),
-                    TransferStatus.PENDING,
-                    riskAssessment.getRiskLevel(),
-                    riskAssessment.getChallengeType(),
-                    deviceFingerprint,
-                    ipAddress,
-                    location,
-                    "OTP challenge issued"
-            );
-
-            return new ChallengeResponse("CHALLENGE_REQUIRED", challengeId, riskAssessment.getChallengeType());
-        } else {
-            // Execute transfer immediately (low risk)
-            AccountDto result = createTransfer(transferRequest, userId, deviceFingerprint, ipAddress, location, riskAssessment);
-            return result;
-        }
-    }
-
-    @Transactional
-    public AccountDto verifyTransfer(VerifyTransferRequest verifyTransferRequest) {
-        // Retrieve pending transfer from Redis
-        PendingTransfer pendingTransfer;
-        try {
-            pendingTransfer = (PendingTransfer) redisTemplate.opsForValue().get("transfer:" + verifyTransferRequest.getChallengeId());
-        } catch (Exception e) {
-            throw new AppException(ErrorCode.REDIS_CONNECTION_FAILED);
-        }
-
-        if (pendingTransfer == null) {
-            // Audit: Challenge not found or expired
-            auditService.logTransfer(
-                    null,  // userId not available when challenge not found
-                    null,
-                    null,
-                    null,
-                    TransferStatus.EXPIRED,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    "Challenge ID not found or expired"
-            );
-            throw new AppException(ErrorCode.NOT_FOUND_EXCEPTION, "Pending transfer not found");
-        }
-
-        if (!pendingTransfer.getOtpCode().equals(verifyTransferRequest.getOtpCode())) {
-            // Audit: Invalid OTP attempt
-            auditService.logTransfer(
-                    pendingTransfer.getUserId(),
-                    pendingTransfer.getTransferRequest().getSenderAccountId(),
-                    pendingTransfer.getTransferRequest().getReceiverAccountId(),
-                    pendingTransfer.getTransferRequest().getAmount(),
-                    TransferStatus.FAILED,
-                    pendingTransfer.getRiskLevel(),
-                    pendingTransfer.getChallengeType(),
-                    pendingTransfer.getDeviceFingerprint(),
-                    pendingTransfer.getIpAddress(),
-                    pendingTransfer.getLocation(),
-                    "Invalid OTP code"
-            );
-            throw new AppException(ErrorCode.INVALID_OTP);
-        }
-
-        // Execute the transfer
-        AccountDto accountDto = createTransfer(
-                pendingTransfer.getTransferRequest(), 
-                pendingTransfer.getUserId(),
-                pendingTransfer.getDeviceFingerprint(),
-                pendingTransfer.getIpAddress(),
-                pendingTransfer.getLocation(),
-                null  // RiskAssessment already done, pass null
-        );
-
-        // Delete the used challenge from Redis
-        redisTemplate.delete("transfer:" + verifyTransferRequest.getChallengeId());
-
-        return accountDto;
-    }
-
-    private AccountDto createTransfer(TransferRequest transferRequest, String userId,
-                                      String deviceFingerprint, String ipAddress, String location,
-                                      RiskAssessmentResponse riskAssessment) {
-        try {
-            Account fromAccount = accountRepository.findById(transferRequest.getSenderAccountId())
-                    .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Source account not found"));
-            Account toAccount = accountRepository.findById(transferRequest.getReceiverAccountId())
-                    .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Destination account not found"));
-
-            fromAccount.setBalance(fromAccount.getBalance().subtract(transferRequest.getAmount()));
-            toAccount.setBalance(toAccount.getBalance().add(transferRequest.getAmount()));
-
-            accountRepository.save(fromAccount);
-            accountRepository.save(toAccount);
-
-            // Audit: Successful transfer (immediate low-risk or after OTP verification)
-            String riskLevel = riskAssessment != null ? riskAssessment.getRiskLevel() : "LOW";
-            String challengeType = riskAssessment != null ? riskAssessment.getChallengeType() : null;
-            
-            auditService.logTransfer(
-                    userId,
-                    transferRequest.getSenderAccountId(),
-                    transferRequest.getReceiverAccountId(),
-                    transferRequest.getAmount(),
-                    TransferStatus.COMPLETED,
-                    riskLevel,
-                    challengeType,
-                    deviceFingerprint,
-                    ipAddress,
-                    location,
-                    "Transfer executed successfully"
-            );
-
-            return accountMapper.toDto(fromAccount);
-        } catch (Exception e) {
-            // Audit: Transfer execution failed
-            String riskLevel = riskAssessment != null ? riskAssessment.getRiskLevel() : null;
-            String challengeType = riskAssessment != null ? riskAssessment.getChallengeType() : null;
-            
-            auditService.logTransfer(
-                    userId,
-                    transferRequest.getSenderAccountId(),
-                    transferRequest.getReceiverAccountId(),
-                    transferRequest.getAmount(),
-                    TransferStatus.FAILED,
-                    riskLevel,
-                    challengeType,
-                    deviceFingerprint,
-                    ipAddress,
-                    location,
-                    "Transfer execution error: " + e.getMessage()
-            );
-            throw e;
-        }
-    }
-
+   
     /**
      * Debit (subtract) amount from an account.
      * Called by transaction-service for synchronous balance updates.
      * Uses pessimistic locking to prevent race conditions.
      */
+    public AccountDto getAccountByNumber(String accountNumber) {
+        Account account = accountRepository.findByAccountNumber(accountNumber)
+                .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Account number not found: " + accountNumber));
+        return accountMapper.toDto(account);
+    }
+
     @Transactional
     public com.uit.accountservice.dto.response.AccountBalanceResponse debitAccount(
             String accountId, 
@@ -509,6 +248,41 @@ public class AccountService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Get account by account number (for lookup during transfer)
+     * This endpoint is used to check if an account exists before initiating a transfer
+     * @param accountNumber The account number to lookup
+     * @return AccountDto with account information (without sensitive data)
+     */
+    public AccountDto getAccountByAccountNumber(String accountNumber) {
+        Account account = accountRepository.findByAccountNumber(accountNumber)
+                .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND,
+                    "Account not found with account number: " + accountNumber));
+
+        // Only return active accounts for transfers
+        if (account.getStatus() == AccountStatus.CLOSED) {
+            throw new AppException(ErrorCode.ACCOUNT_STATUS_CONFLICT,
+                "This account has been closed and cannot receive transfers");
+        }
+
+        AccountDto accountDto = accountMapper.toDto(account);
+
+        try {
+            ApiResponse<UserResponse> userResponse = userClient.getUserById(account.getUserId());
+            
+            if (userResponse != null && userResponse.getData() != null) {
+                accountDto.setFullName(userResponse.getData().fullName());
+            } else {
+                accountDto.setFullName("Unknown User");
+            }
+        } catch (Exception e) {
+            log.error("Failed to fetch user name for account lookup: {}", e.getMessage());
+            accountDto.setFullName("Unknown User"); // Hoặc để null tùy logic FE
+        }
+
+        return accountDto;
+    }
+
     public AccountDto getAccountDetail(String accountId, String userId) {
         Account account = getAccountOwnedByUser(accountId, userId);
         return accountMapper.toDto(account);
@@ -520,26 +294,42 @@ public class AccountService {
     }
 
     @Transactional
-    public AccountDto createAccount(String userId, CreateAccountRequest request) {
+    public AccountDto createAccount(String userId, CreateAccountRequest request, String fullName) {
         String accountNumber;
 
         // Determine account number based on accountNumberType
         if ("PHONE_NUMBER".equals(request.accountNumberType())) {
-            // Use phone number as account number
-            if (request.phoneNumber() == null || request.phoneNumber().isEmpty()) {
-                throw new AppException(ErrorCode.BAD_REQUEST, "Phone number is required when accountNumberType is PHONE_NUMBER");
-            }
-            accountNumber = request.phoneNumber();
+            // Auto-fetch phone number from user-service
+            String phoneNumber = fetchPhoneNumberFromUserService(userId);
 
-            // Check if account with this phone number already exists
-            if (accountRepository.findByAccountNumber(accountNumber).isPresent()) {
-                throw new AppException(ErrorCode.BAD_REQUEST, "Account with this phone number already exists");
+            if (phoneNumber == null || phoneNumber.isEmpty()) {
+                throw new AppException(ErrorCode.BAD_REQUEST,
+                    "User does not have a phone number registered. Please update your profile first or use AUTO_GENERATE.");
             }
+
+            accountNumber = phoneNumber;
+
+            // Check if account with this phone number already exists (globally)
+            if (accountRepository.findByAccountNumber(accountNumber).isPresent()) {
+                throw new AppException(ErrorCode.BAD_REQUEST,
+                    "An account with your phone number already exists. Each phone number can only be used once.");
+            }
+
         } else if ("AUTO_GENERATE".equals(request.accountNumberType())) {
             // Generate unique account number
             accountNumber = generateUniqueAccountNumber();
+
         } else {
             throw new AppException(ErrorCode.BAD_REQUEST, "Invalid accountNumberType: " + request.accountNumberType());
+        }
+
+        // Additional check: User cannot create duplicate accounts with same account number
+        boolean userAlreadyHasThisAccountNumber = accountRepository.findByUserId(userId).stream()
+                .anyMatch(account -> account.getAccountNumber().equals(accountNumber));
+
+        if (userAlreadyHasThisAccountNumber) {
+            throw new AppException(ErrorCode.BAD_REQUEST,
+                "You already have an account with this account number: " + accountNumber);
         }
 
         // Validate and hash PIN if provided
@@ -558,7 +348,68 @@ public class AccountService {
                 .pinHash(pinHash)
                 .build();
 
-        return accountMapper.toDto(accountRepository.save(account));
+        log.info("Account created successfully - UserId: {} - AccountNumber: {}", userId, accountNumber);
+
+        Account savedAccount = accountRepository.save(account);
+
+        try {
+            if (fullName == null || fullName.trim().isEmpty()) {
+                try {
+                    ApiResponse<UserResponse> userRes = userClient.getUserById(userId);
+                    if (userRes != null && userRes.getData() != null) {
+                        fullName = userRes.getData().fullName();
+                    }
+                } catch (Exception ex) {
+                    log.warn("Could not fetch user name for card creation via Feign: {}", ex.getMessage());
+                }
+            }
+            
+            cardService.createInitialCard(savedAccount, fullName);
+            
+        } catch (Exception e) {
+            log.error("Failed to auto-create card for account {}: {}", savedAccount.getAccountId(), e.getMessage());
+        }
+
+        // Centralized Audit Log
+        AuditEventDto auditEvent = AuditEventDto.builder()
+                .serviceName("account-service")
+                .entityType("Account")
+                .entityId(savedAccount.getAccountId())
+                .action("CREATE_ACCOUNT")
+                .userId(userId)
+                .newValues(Map.of(
+                    "accountNumber", accountNumber,
+                    "status", AccountStatus.ACTIVE.toString(),
+                    "currency", "VND", // Assuming VND default
+                    "accountNumberType", request.accountNumberType()
+                ))
+                .changes("New account opened")
+                .result("SUCCESS")
+                .build();
+        auditEventPublisher.publishAuditEvent(auditEvent);
+
+
+        return accountMapper.toDto(savedAccount);
+    }
+
+    /**
+     * Fetch phone number from user-service for the given userId
+     * @param userId The user ID
+     * @return Phone number or null if not found
+     */
+    private String fetchPhoneNumberFromUserService(String userId) {
+        try {
+            ApiResponse<UserResponse> response = userClient.getUserById(userId);
+            if (response != null && response.getData() != null && response.getData().phoneNumber() != null) {
+                return response.getData().phoneNumber();
+            }
+        } catch (Exception e) {
+            log.error("Failed to fetch user phone number from user-service for userId: {}. Error: {}",
+                    userId, e.getMessage());
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION,
+                "Failed to retrieve user information. Please try again later.");
+        }
+        return null;
     }
 
     @Transactional
@@ -575,6 +426,19 @@ public class AccountService {
 
         account.setStatus(AccountStatus.CLOSED);
         accountRepository.save(account);
+
+        // Centralized Audit Log
+        AuditEventDto auditEvent = AuditEventDto.builder()
+                .serviceName("account-service")
+                .entityType("Account")
+                .entityId(accountId)
+                .action("CLOSE_ACCOUNT")
+                .userId(userId)
+                .newValues(Map.of("status", AccountStatus.CLOSED.toString()))
+                .changes("Account closed by user")
+                .result("SUCCESS")
+                .build();
+        auditEventPublisher.publishAuditEvent(auditEvent);
     }
 
     @Transactional

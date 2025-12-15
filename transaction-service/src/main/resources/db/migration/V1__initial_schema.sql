@@ -7,7 +7,7 @@
 CREATE TABLE IF NOT EXISTS transactions (
     transaction_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     sender_account_id VARCHAR(255) NOT NULL,
-    receiver_account_id VARCHAR(255) NOT NULL,
+    receiver_account_id VARCHAR(255),
     amount NUMERIC(19, 2) NOT NULL,
     fee_amount NUMERIC(19, 2) DEFAULT 0.00,
     description TEXT NOT NULL,
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS transactions (
         transfer_type IS NULL OR transfer_type IN ('INTERNAL', 'EXTERNAL')
     ),
     CONSTRAINT transactions_current_step_check CHECK (
-        current_step IS NULL OR current_step IN ('STARTED', 'OTP_VERIFIED', 'DEBITED', 'CREDITED', 'COMPLETED', 'ROLLING_BACK', 'ROLLED_BACK', 'FAILED', 'ROLLBACK_FAILED')
+        current_step IS NULL OR current_step IN ('STARTED', 'OTP_VERIFIED', 'DEBITED', 'CREDITED', 'COMPLETED', 'ROLLING_BACK', 'ROLLED_BACK', 'FAILED', 'ROLLBACK_FAILED' ,'EXTERNAL_INITIATED')
     )
 );
 

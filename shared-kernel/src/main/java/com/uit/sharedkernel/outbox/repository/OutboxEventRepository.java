@@ -18,4 +18,6 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEvent, java.u
     List<OutboxEvent> findByAggregateTypeAndAggregateId(String aggregateType, String aggregateId);
 
     List<OutboxEvent> findByEventType(String eventType);
+
+    List<OutboxEvent> findByAggregateTypeAndStatusOrderByCreatedAtAsc(String aggregateType, OutboxEventStatus status);
 }

@@ -13,14 +13,19 @@ import com.uit.transactionservice.client.dto.InternalTransferResponse;
 import com.uit.transactionservice.dto.request.CreateTransferRequest;
 import com.uit.transactionservice.dto.response.TransactionResponse;
 import com.uit.transactionservice.entity.*;
-import com.uit.transactionservice.event.ExternalTransferInitiatedEvent;
 import com.uit.transactionservice.exception.AccountServiceException;
 import com.uit.transactionservice.exception.InsufficientBalanceException;
 import com.uit.transactionservice.mapper.TransactionMapper;
-import com.uit.transactionservice.publisher.ExternalTransferPublisher;
 import com.uit.transactionservice.repository.TransactionFeeRepository;
 import com.uit.transactionservice.repository.TransactionLimitRepository;
 import com.uit.transactionservice.repository.TransactionRepository;
+import com.uit.transactionservice.dto.stripe.StripeTransferRequest;
+import com.uit.transactionservice.dto.stripe.StripeTransferResponse;
+import com.uit.transactionservice.dto.SepayWebhookDto;
+import com.uit.transactionservice.dto.sse.TransactionStatusUpdate;
+import com.uit.sharedkernel.audit.AuditEventDto;
+import com.uit.sharedkernel.audit.AuditEventPublisher;
+import com.stripe.exception.StripeException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -47,28 +52,160 @@ public class TransactionService {
     private final ObjectMapper objectMapper;
     private final OTPService otpService;
     private final AccountServiceClient accountServiceClient;
-    private final ExternalTransferPublisher externalTransferPublisher;
+    private final StripeTransferService stripeTransferService;
+    private final TransactionSseService sseService;
+    private final AuditEventPublisher auditEventPublisher;
     
     /**
-     * Create a new transfer transaction with OTP verification
+     * Handle SePay webhook for Top-up (Deposit)
      */
     @Transactional
-    public TransactionResponse createTransfer(CreateTransferRequest request, String userId, String phoneNumber) {
-        log.info("Creating transfer from {} to {} with OTP", request.getSenderAccountId(), request.getReceiverAccountId());
+    public void handleSepayTopup(SepayWebhookDto webhookData, String accountId) {
+        log.info("Processing SePay Top-up - AccountID: {} - Amount: {} - SePay Ref: {}", 
+                accountId, webhookData.getTransferAmount(), webhookData.getCode());
 
-        // 1. Check transaction limit
+        if (transactionRepository.existsByExternalTransactionId(webhookData.getCode())) {
+            log.warn("SePay transaction already processed - Ref: {}", webhookData.getCode());
+            return;
+        }
+
+        String correlationId = UUID.randomUUID().toString();
+        Transaction transaction = Transaction.builder()
+                .senderAccountId("SEPAY_GATEWAY") // Virtual sender
+                .receiverAccountId(accountId)
+                .amount(webhookData.getTransferAmount())
+                .feeAmount(BigDecimal.ZERO)
+                .transactionType(TransactionType.DEPOSIT)
+                .status(TransactionStatus.PENDING)
+                .description(webhookData.getDescription())
+                .externalTransactionId(webhookData.getCode()) // Store SePay ref
+                .correlationId(correlationId)
+                .currentStep(SagaStep.STARTED)
+                .createdAt(LocalDateTime.now())
+                .build();
+        
+        transaction = transactionRepository.save(transaction);
+        log.info("Created Deposit Transaction - TxID: {}", transaction.getTransactionId());
+
+        try {
+            log.info("Crediting account {} with amount {}", accountId, webhookData.getTransferAmount());
+            
+            accountServiceClient.creditAccount(
+                    accountId,
+                    webhookData.getTransferAmount(),
+                    transaction.getTransactionId().toString(),
+                    "SePay Deposit: " + webhookData.getDescription()
+            );
+
+            transaction.setStatus(TransactionStatus.COMPLETED);
+            transaction.setCurrentStep(SagaStep.COMPLETED);
+            transaction.setCompletedAt(LocalDateTime.now());
+            transactionRepository.save(transaction);
+            
+            log.info("SePay Deposit Completed Successfully - TxID: {}", transaction.getTransactionId());
+            
+            sendTransactionNotification(transaction, "DepositCompleted", true);
+
+        } catch (Exception e) {
+            log.error("Failed to credit account for SePay Deposit - TxID: {}", transaction.getTransactionId(), e);
+            
+            transaction.setStatus(TransactionStatus.FAILED);
+            transaction.setCurrentStep(SagaStep.FAILED);
+            transaction.setFailureReason("Failed to credit account: " + e.getMessage());
+            transactionRepository.save(transaction);
+            
+            sendTransactionNotification(transaction, "DepositFailed", false);
+            throw new RuntimeException("Failed to process SePay deposit", e);
+        }
+    }
+
+    @Transactional
+    public TransactionResponse createTransfer(CreateTransferRequest request, String userId, String phoneNumber) {
+        log.info("Creating transfer from {} to {} with OTP", request.getSenderAccountNumber(), request.getReceiverAccountNumber());
+
+        String senderUserId = userId;
+
+        // 1. Validate Sender Account Exists (Always)
+        // We use getAccountByNumber to verify sender
+        try {
+            Map<String, Object> senderInfo = accountServiceClient.getAccountByNumber(request.getSenderAccountNumber());
+            if (senderInfo == null) {
+                 throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Sender account not found: " + request.getSenderAccountNumber());
+            }
+            // Optional: Verify that the resolved ID matches the ID in request if needed, 
+            // but we trust the number lookup.
+            // String resolvedSenderId = (String) senderInfo.get("accountId");
+        } catch (Exception e) {
+             // If service call fails
+             log.error("Failed to validate sender account: {}", e.getMessage());
+             throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Sender account validation failed");
+        }
+
+
+        // 2. Validate Receiver based on Transaction Type
+        String receiverAccountNumber = request.getReceiverAccountNumber();
+        String receiverAccountId = null;
+        String receiverUserId = null;
+
+        if (request.getTransactionType() == TransactionType.INTERNAL_TRANSFER) {
+            // INTERNAL: Check against local Account Service
+            log.info("Validating INTERNAL receiver - AccountNumber: {}", receiverAccountNumber);
+            try {
+                Map<String, Object> accountMap = accountServiceClient.getAccountByNumber(receiverAccountNumber);
+                if (accountMap != null) {
+                    receiverAccountId = (String) accountMap.get("accountId");
+                    Object rUserId = accountMap.get("userId");
+                    if (rUserId != null) {
+                        receiverUserId = rUserId.toString();
+                    }
+                    log.info("Receiver found locally - ID: {}, UserID: {}", receiverAccountId, receiverUserId);
+                } else {
+                    throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Receiver account not found for internal transfer");
+                }
+            } catch (Exception e) {
+                log.warn("Failed to check local DB for receiver: {}", e.getMessage());
+                throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Receiver account not found: " + e.getMessage());
+            }
+        
+        } else if (request.getTransactionType() == TransactionType.EXTERNAL_TRANSFER) {
+            // EXTERNAL: Validate via Stripe, do NOT check local Account Service
+            // Receiver Account ID/User ID will be NULL in our DB
+            log.info("Validating EXTERNAL receiver via Stripe - Account: {}", receiverAccountNumber);
+            try {
+                boolean isValidInStripe = stripeTransferService.validateConnectedAccount(receiverAccountNumber);
+                if (!isValidInStripe) {
+                    log.error("Receiver account invalid in Stripe - Account: {}", receiverAccountNumber);
+                    throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "External receiver account invalid");
+                }
+                log.info("Receiver account validated in Stripe");
+                
+                // For external, we might store the external ID in receiverAccountId or keep it null 
+                // and just use receiverAccountNumber. Keeping it null to distinguish.
+                // Or we can store the stripe ID in receiverAccountId if we want.
+                // Let's keep receiverAccountId null as per requirement "lưu vào transaction sẽ chỉ có receiveraccountnumber thôi"
+                
+            } catch (com.stripe.exception.StripeException e) {
+                log.error("Failed to validate receiver account with Stripe: {}", e.getMessage());
+                throw new RuntimeException("Failed to validate external receiver account", e);
+            }
+        }
+
+        // 3. Check transaction limit using Sender Account ID
         checkTransactionLimit(request.getSenderAccountId(), request.getAmount());
 
-        // 2. Calculate fee
-        BigDecimal fee = calculateFee(request.getTransactionType(), request.getAmount());
-        // BigDecimal totalAmount = request.getAmount().add(fee);
+        // 4. Fee is temporarily set to ZERO (no transaction fee for now)
+        BigDecimal fee = BigDecimal.ZERO;
 
-        // 3. Create transaction with PENDING_OTP status and Saga state
+        // 5. Create transaction with PENDING_OTP status
         String correlationId = UUID.randomUUID().toString();
         
         Transaction transaction = Transaction.builder()
                 .senderAccountId(request.getSenderAccountId())
-                .receiverAccountId(request.getReceiverAccountId())
+                .senderAccountNumber(request.getSenderAccountNumber())
+                .senderUserId(senderUserId)
+                .receiverAccountNumber(request.getReceiverAccountNumber())
+                .receiverAccountId(receiverAccountId) // Null for external
+                .receiverUserId(receiverUserId)       // Null for external
                 .amount(request.getAmount())
                 .feeAmount(fee)
                 .transactionType(request.getTransactionType())
@@ -79,19 +216,18 @@ public class TransactionService {
                 .currentStep(com.uit.transactionservice.entity.SagaStep.STARTED)
                 .build();
         transaction = transactionRepository.save(transaction);
-        log.info("transaction " + transaction);
+        
+        log.info("Transaction created with ID: {} - Type: {} - Status: PENDING_OTP", 
+                transaction.getTransactionId(), request.getTransactionType());
 
-        log.info("Transaction created with ID: {} - Correlation ID: {} - Status: PENDING_OTP", 
-                transaction.getTransactionId(), correlationId);
-
-        // 4. Generate and save OTP to Redis
+        // 6. Generate and save OTP to Redis
         String otpCode = otpService.generateOTP();
         log.info("Generated OTP Code: " + otpCode); // For development only
         otpService.saveOTP(transaction.getTransactionId(), otpCode, phoneNumber);
         
         log.info("OTP generated and saved to Redis for transaction: {}", transaction.getTransactionId());
 
-        // 5. Send OTP SMS via event (notification-service will handle)
+        // 7. Send OTP SMS via event (notification-service will handle)
         sendOTPNotification(transaction.getTransactionId(), phoneNumber, otpCode);
 
         return transactionMapper.toResponse(transaction);
@@ -175,14 +311,17 @@ public class TransactionService {
     }
 
     /**
-     * Calculate transaction fee
+     * Calculate transaction fee - TEMPORARILY DISABLED
+     * Fee is set to ZERO for all transactions
      */
     private BigDecimal calculateFee(TransactionType type, BigDecimal amount) {
-        TransactionFee feeConfig = transactionFeeRepository.findByTransactionType(type)
-                .orElseThrow(() -> new RuntimeException("Fee configuration not found for type: " + type));
-
-        log.debug("Calculated fee: {} for amount: {} and type: {}", feeConfig.getFeeAmount(), amount, type);
-        return feeConfig.getFeeAmount();
+        // TODO: Re-enable fee calculation when needed
+        // TransactionFee feeConfig = transactionFeeRepository.findByTransactionType(type)
+        //         .orElseThrow(() -> new RuntimeException("Fee configuration not found for type: " + type));
+        // return feeConfig.getFeeAmount();
+        
+        log.debug("Fee calculation disabled - returning ZERO for type: {}", type);
+        return BigDecimal.ZERO;
     }
 
     /**
@@ -358,7 +497,8 @@ public class TransactionService {
     private TransactionResponse processInternalTransfer(Transaction transaction) {
         log.info("Processing INTERNAL transfer - TxID: {}", transaction.getTransactionId());
 
-        BigDecimal totalAmount = transaction.getAmount().add(transaction.getFeeAmount());
+        // No fee for now - totalAmount = amount only
+        BigDecimal totalAmount = transaction.getAmount();
         
         try {
             // Use atomic internal transfer endpoint (recommended approach)
@@ -389,9 +529,27 @@ public class TransactionService {
             
             log.info("Internal transfer completed - TxID: {} - Sender new balance: {} - Receiver new balance: {}",
                     transaction.getTransactionId(), 
-                    transferResponse.getFromAccountNewBalance(),
-                    transferResponse.getToAccountNewBalance());
+                    transferResponse.getSenderAccountNewBalance(),
+                    transferResponse.getReceiverAccountNewBalance());
             
+            // Centralized Audit Log
+            AuditEventDto auditEvent = AuditEventDto.builder()
+                    .serviceName("transaction-service")
+                    .entityType("Transaction")
+                    .entityId(transaction.getTransactionId().toString())
+                    .action("INTERNAL_TRANSFER")
+                    .userId(transaction.getSenderUserId())
+                    .newValues(Map.of(
+                        "senderAccountId", transaction.getSenderAccountId(),
+                        "receiverAccountId", transaction.getReceiverAccountId(),
+                        "amount", totalAmount,
+                        "status", TransactionStatus.COMPLETED.toString()
+                    ))
+                    .changes("Internal transfer completed")
+                    .result("SUCCESS")
+                    .build();
+            auditEventPublisher.publishAuditEvent(auditEvent);
+
             return transactionMapper.toResponse(transaction);
 
         } catch (InsufficientBalanceException e) {
@@ -429,15 +587,13 @@ public class TransactionService {
         }
     }
 
-    /**
-     * Process EXTERNAL transfer (to another bank) - ASYNCHRONOUS via RabbitMQ
-     * Only debits sender account immediately, publishes event to MQ, credit happens later via callback
-     */
+
     private TransactionResponse processExternalTransfer(Transaction transaction) {
         log.info("Processing EXTERNAL transfer - TxID: {} - To Bank: {}", 
                 transaction.getTransactionId(), transaction.getDestinationBankCode());
 
-        BigDecimal totalAmount = transaction.getAmount().add(transaction.getFeeAmount());
+        // No fee for now - totalAmount = amount only
+        BigDecimal totalAmount = transaction.getAmount();
         
         try {
             // Step 1: Debit sender account first (sync)
@@ -455,29 +611,69 @@ public class TransactionService {
             transaction = transactionRepository.save(transaction);
             log.info("Debit completed - New sender balance: {}", debitResponse.getNewBalance());
 
-            // Step 2: Publish external transfer event to RabbitMQ (async)
-            log.info("Step 2: Publishing external transfer event to message queue");
+            // Step 2: Call Stripe Transfer API (sync with Resilience4j retry)
+            String idempotencyKey = UUID.randomUUID().toString();
+            transaction.setIdempotencyKey(idempotencyKey);
+            log.info("Step 2: Calling Stripe Transfer API - IdempotencyKey: {}", idempotencyKey);
             
-            ExternalTransferInitiatedEvent event = ExternalTransferInitiatedEvent.builder()
-                    .transactionId(transaction.getTransactionId().toString())
-                    .sourceAccountNumber(transaction.getSenderAccountId())
-                    .sourceBankCode("FORTRESS")
-                    .destinationAccountNumber(transaction.getReceiverAccountId())
-                    .destinationBankCode(transaction.getDestinationBankCode())
-                    .amount(transaction.getAmount())
-                    .description(transaction.getDescription())
-                    .timestamp(LocalDateTime.now())
-                    .build();
-
-            externalTransferPublisher.publishExternalTransferInitiated(event);
-            
-            // Update transaction status - waiting for callback
-            transaction.setCurrentStep(SagaStep.EXTERNAL_INITIATED);
-            transaction.setStatus(TransactionStatus.PENDING);  // Still pending until callback
-            transaction = transactionRepository.save(transaction);
-
-            log.info("External transfer event published to MQ - TxID: {} - Status: PENDING", 
-                    transaction.getTransactionId());
+            try {
+                // Create Stripe transfer request (to Connected Account)
+                StripeTransferRequest stripeRequest = StripeTransferRequest.builder()
+                        .amount(totalAmount.multiply(BigDecimal.valueOf(100)).longValue()) // Convert to cents
+                        .currency("usd")
+                        .destination(transaction.getReceiverAccountNumber()) // Connected Account ID (e.g., "acct_xxxxx")
+                        // .destination("acct_1ScVfURovHoUHamy") // Connected Account ID (e.g., "acct_xxxxx")
+                        .description(transaction.getDescription())
+                        .metadata(Map.of(
+                                "transaction_id", transaction.getTransactionId().toString(),
+                                "sender_account_id", transaction.getSenderAccountId(),
+                                "correlation_id", transaction.getCorrelationId()
+                        ))
+                        .transferGroup(transaction.getCorrelationId()) // Group related transfers
+                        .build();
+                
+                // Call Stripe Transfer API (Resilience4j will retry 3 times if fails)
+                StripeTransferResponse stripeResponse = stripeTransferService.createTransfer(stripeRequest);
+                
+                // Update transaction with Stripe transfer ID
+                transaction.setStripeTransferId(stripeResponse.getId()); // Store transfer ID
+                transaction.setStripeTransferStatus("completed"); // Transfer completed
+                transaction.setCurrentStep(SagaStep.EXTERNAL_INITIATED);
+                transaction.setStatus(TransactionStatus.PENDING);
+                transaction = transactionRepository.save(transaction);
+                
+                log.info("Stripe transfer created successfully - TransferID: {} - Destination: {} - TxID: {}",
+                        stripeResponse.getId(), stripeResponse.getDestination(), transaction.getTransactionId());
+                
+            } catch (StripeException e) {
+                // Stripe API failed after retries - Rollback debit
+                log.error("Stripe transfer failed - TxID: {} - Error: {}", transaction.getTransactionId(), e.getMessage());
+                
+                try {
+                    log.warn("Rolling back debit after Stripe failure - TxID: {}", transaction.getTransactionId());
+                    accountServiceClient.rollbackDebit(
+                            transaction.getSenderAccountId(),
+                            totalAmount,
+                            transaction.getTransactionId().toString()
+                    );
+                    transaction.setCurrentStep(SagaStep.ROLLBACK_COMPLETED);
+                    transaction.setStatus(TransactionStatus.FAILED);
+                    log.info("Rollback completed - TxID: {}", transaction.getTransactionId());
+                } catch (Exception rollbackError) {
+                    log.error("CRITICAL: Rollback failed - TxID: {} - Manual intervention required!",
+                            transaction.getTransactionId(), rollbackError);
+                    transaction.setCurrentStep(SagaStep.ROLLBACK_FAILED);
+                    transaction.setStatus(TransactionStatus.ROLLBACK_FAILED);
+                }
+                
+                transaction.setFailureReason("Stripe API error: " + e.getMessage());
+                transaction.setStripeFailureCode(e.getCode());
+                transaction.setStripeFailureMessage(e.getMessage());
+                transactionRepository.save(transaction);
+                sendTransactionNotification(transaction, "TransactionFailed", false);
+                
+                throw new RuntimeException("Stripe transfer failed: " + e.getMessage(), e);
+            }
 
             // Update transaction limit
             updateTransactionLimit(transaction.getSenderAccountId(), totalAmount);
@@ -485,6 +681,26 @@ public class TransactionService {
             // Send notification that transfer is being processed
             sendTransactionNotification(transaction, "ExternalTransferInitiated", false);
             
+            // Centralized Audit Log
+            AuditEventDto auditEvent = AuditEventDto.builder()
+                    .serviceName("transaction-service")
+                    .entityType("Transaction")
+                    .entityId(transaction.getTransactionId().toString())
+                    .action("EXTERNAL_TRANSFER_INIT")
+                    .userId(transaction.getSenderUserId())
+                    .newValues(Map.of(
+                        "senderAccountId", transaction.getSenderAccountId(),
+                        "receiverAccountNumber", transaction.getReceiverAccountNumber(),
+                        "amount", totalAmount,
+                        "destinationBank", transaction.getDestinationBankCode() != null ? transaction.getDestinationBankCode() : "Stripe",
+                        "stripeTransferId", transaction.getStripeTransferId(),
+                        "status", TransactionStatus.PENDING.toString()
+                    ))
+                    .changes("External transfer initiated via Stripe")
+                    .result("PENDING")
+                    .build();
+            auditEventPublisher.publishAuditEvent(auditEvent);
+
             return transactionMapper.toResponse(transaction);
 
         } catch (InsufficientBalanceException e) {
@@ -497,49 +713,17 @@ public class TransactionService {
             sendTransactionNotification(transaction, "TransactionFailed", false);
             throw new RuntimeException("Insufficient balance in sender account", e);
 
-        } catch (AccountServiceException e) {
-            // Handle partial failure - need rollback
-            log.error("Transaction {} failed during account service call", transaction.getTransactionId(), e);
-            
-            // If debit succeeded but credit failed, rollback the debit
-            if (transaction.getCurrentStep() == SagaStep.DEBIT_COMPLETED) {
-                log.warn("Rolling back debit for transaction {}", transaction.getTransactionId());
-                try {
-                    accountServiceClient.rollbackDebit(
-                            transaction.getSenderAccountId(),
-                            totalAmount,
-                            transaction.getTransactionId().toString()
-                    );
-                    transaction.setCurrentStep(SagaStep.ROLLBACK_COMPLETED);
-                    log.info("Rollback completed for transaction {}", transaction.getTransactionId());
-                } catch (Exception rollbackError) {
-                    log.error("CRITICAL: Rollback failed for transaction {} - Manual intervention required!", 
-                            transaction.getTransactionId(), rollbackError);
-                    transaction.setCurrentStep(SagaStep.ROLLBACK_FAILED);
-                }
-            }
-            
-            transaction.setStatus(TransactionStatus.FAILED);
-            transaction.setFailureReason(e.getMessage());
-            transactionRepository.save(transaction);
-            
-            // Send failure notification asynchronously
-            sendTransactionNotification(transaction, "TransactionFailed", false);
-            
-            throw new RuntimeException("Transaction failed: " + e.getMessage(), e);
-
         } catch (Exception e) {
-            // Unexpected error
-            log.error("Unexpected error during transaction {}", transaction.getTransactionId(), e);
+            // Unexpected error during processing
+            log.error("External transfer {} failed during processing", transaction.getTransactionId(), e);
+            
             transaction.setStatus(TransactionStatus.FAILED);
             transaction.setCurrentStep(SagaStep.FAILED);
-            transaction.setFailureReason("System error: " + e.getMessage());
+            transaction.setFailureReason("Unexpected error: " + e.getMessage());
             transactionRepository.save(transaction);
-            
-            // Send failure notification asynchronously
             sendTransactionNotification(transaction, "TransactionFailed", false);
             
-            throw new RuntimeException("Transaction failed due to system error", e);
+            throw new RuntimeException("External transfer failed: " + e.getMessage(), e);
         }
     }
 
@@ -548,7 +732,16 @@ public class TransactionService {
      */
     private void sendTransactionNotification(Transaction transaction, String eventType, boolean success) {
         try {
+            // Use user IDs directly from transaction entity
+            String safeSenderUserId = transaction.getSenderUserId() != null ? transaction.getSenderUserId() : "";
+            String safeReceiverUserId = transaction.getReceiverUserId() != null ? transaction.getReceiverUserId() : "";
+
+            // Log for debugging (optional)
+            log.debug("Notification - SenderUser: {}, ReceiverUser: {}", safeSenderUserId, safeReceiverUserId);
+
             Map<String, Object> payload = new HashMap<>();
+            payload.put("senderUserId", safeSenderUserId);
+            payload.put("receiverUserId", safeReceiverUserId);
             payload.put("transactionId", transaction.getTransactionId().toString());
             payload.put("senderAccountId", transaction.getSenderAccountId());
             payload.put("receiverAccountId", transaction.getReceiverAccountId());
@@ -575,7 +768,248 @@ public class TransactionService {
 
         } catch (Exception e) {
             log.error("Failed to create notification event - non-critical", e);
-            // Don't throw exception, notification is non-critical
         }
     }
+
+    /**
+     * Handle Stripe transfer completed webhook
+     */
+    @Transactional
+    public void handleStripeTransferCompleted(String transactionId, String transferId, String webhookIdempotencyKey) {
+        log.info(" Processing Stripe transfer completed - TxID: {} - TransferID: {} - WebhookKey: {}",
+                transactionId, transferId, webhookIdempotencyKey);
+
+        // 
+        Transaction transaction = transactionRepository.findById(UUID.fromString(transactionId))
+                .orElseThrow(() -> {
+                    log.error(" Transaction not found: {}", transactionId);
+                    return new RuntimeException("Transaction not found: " + transactionId);
+                });
+
+        // Idempotency check
+        if (transaction.getWebhookReceivedAt() != null && 
+            transaction.getStripeTransferStatus() != null &&
+            transaction.getStripeTransferStatus().equals("completed")) {
+            log.warn("Transaction {} already processed webhook - Duplicate ignored. IdempotencyKey: {}", 
+                    transaction.getTransactionId(), webhookIdempotencyKey);
+            return;
+        }
+
+        // Save to Outbox table FIRST (transactional guarantee)
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("transactionId", transaction.getTransactionId().toString());
+            payload.put("transferId", transferId);
+            payload.put("webhookIdempotencyKey", webhookIdempotencyKey);
+            payload.put("eventType", "TRANSFER_COMPLETED");
+            
+            String payloadJson = objectMapper.writeValueAsString(payload);
+            
+            OutboxEvent event = OutboxEvent.builder()
+                    .aggregateId(transaction.getTransactionId().toString())
+                    .aggregateType("StripeWebhook")
+                    .eventType("TRANSFER_COMPLETED")
+                    .exchange("stripe.webhook")
+                    .routingKey("stripe.transfer.completed")
+                    .payload(payloadJson)
+                    .status(OutboxEventStatus.PENDING)
+                    .retryCount(0)
+                    .build();
+            
+            outboxEventRepository.save(event);
+            log.info("Saved TRANSFER_COMPLETED to outbox - TxID: {} - EventID: {}", transaction.getTransactionId(), event.getEventId());
+            
+            // Process immediately (best effort)
+            processTransferCompletedEvent(transaction, webhookIdempotencyKey);
+            
+        } catch (Exception e) {
+            log.error("Failed to save webhook event to outbox - TxID: {}", transaction.getTransactionId(), e);
+            throw new RuntimeException("Failed to handle webhook", e);
+        }
+    }
+    
+    /**
+     * Process transfer completed event (transfer succeeded)
+     */
+    @Transactional
+    public void processTransferCompletedEvent(Transaction transaction, String webhookIdempotencyKey) {
+        // Double-check idempotency
+        if (transaction.getStatus() == TransactionStatus.COMPLETED) {
+            log.warn("Transaction {} already COMPLETED - Skipping", transaction.getTransactionId());
+            return;
+        }
+
+        // Update transaction to COMPLETED
+        transaction.setStatus(TransactionStatus.COMPLETED);
+        transaction.setCurrentStep(SagaStep.COMPLETED);
+        transaction.setStripeTransferStatus("completed");
+        transaction.setWebhookReceivedAt(LocalDateTime.now());
+        transaction.setCompletedAt(LocalDateTime.now());
+        transactionRepository.save(transaction);
+
+        log.info(" Transaction COMPLETED - Transfer succeeded - TxID: {} - TransferID: {}", 
+                transaction.getTransactionId(), transaction.getStripeTransferId());
+        
+        // Push SSE update to client
+        TransactionStatusUpdate sseUpdate = TransactionStatusUpdate.success(
+                transaction.getTransactionId().toString(),
+                transaction.getAmount(),
+                transaction.getReceiverAccountId()
+        );
+        sseService.pushUpdate(transaction.getTransactionId().toString(), sseUpdate);
+        
+        sendTransactionNotification(transaction, "TransactionCompleted", true);
+
+        // Centralized Audit Log
+        AuditEventDto auditEvent = AuditEventDto.builder()
+                .serviceName("transaction-service")
+                .entityType("Transaction")
+                .entityId(transaction.getTransactionId().toString())
+                .action("EXTERNAL_TRANSFER_COMPLETED")
+                .userId(transaction.getSenderUserId())
+                .newValues(Map.of(
+                    "stripeTransferId", transaction.getStripeTransferId(),
+                    "status", TransactionStatus.COMPLETED.toString()
+                ))
+                .changes("External transfer confirmed by Stripe webhook")
+                .result("SUCCESS")
+                .build();
+        auditEventPublisher.publishAuditEvent(auditEvent);
+    }
+
+    /**
+     * Handle Stripe transfer failure webhook - ROLLBACK
+     * Called when Stripe sends transfer.failed or transfer.reversed event
+     */
+    @Transactional
+    public void handleStripeTransferFailure(String transferId, String failureCode, 
+                                         String failureMessage, String webhookIdempotencyKey) {
+        log.warn("Received Stripe transfer failure - TransferID: {} - Reason: {} - WebhookKey: {}",
+                transferId, failureMessage, webhookIdempotencyKey);
+
+        Transaction transaction = transactionRepository.findByStripeTransferId(transferId)
+                .orElseThrow(() -> new RuntimeException("Transaction not found for transfer: " + transferId));
+
+        // Idempotency check
+        if (transaction.getWebhookReceivedAt() != null &&
+            (transaction.getStatus() == TransactionStatus.FAILED ||
+             transaction.getStatus() == TransactionStatus.ROLLBACK_COMPLETED)) {
+            log.warn("Transaction {} already processed failure webhook - Duplicate ignored", transaction.getTransactionId());
+            return;
+        }
+
+        // Save to Outbox FIRST
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("transactionId", transaction.getTransactionId().toString());
+            payload.put("transferId", transferId);
+            payload.put("failureCode", failureCode);
+            payload.put("failureMessage", failureMessage);
+            payload.put("webhookIdempotencyKey", webhookIdempotencyKey);
+            payload.put("eventType", "TRANSFER_FAILURE");
+            
+            String payloadJson = objectMapper.writeValueAsString(payload);
+            
+            OutboxEvent event = OutboxEvent.builder()
+                    .aggregateId(transaction.getTransactionId().toString())
+                    .aggregateType("StripeWebhook")
+                    .eventType("TRANSFER_FAILURE")
+                    .exchange("stripe.webhook")
+                    .routingKey("stripe.transfer.failure")
+                    .payload(payloadJson)
+                    .status(OutboxEventStatus.PENDING)
+                    .retryCount(0)
+                    .build();
+            
+            outboxEventRepository.save(event);
+            log.info("Saved TRANSFER_FAILURE to outbox - TxID: {} - EventID: {}", transaction.getTransactionId(), event.getEventId());
+            
+            // Process immediately (best effort)
+            processTransferFailureEvent(transaction, transferId, failureCode, failureMessage);
+            
+        } catch (Exception e) {
+            log.error("Failed to save webhook event to outbox - TxID: {}", transaction.getTransactionId(), e);
+            throw new RuntimeException("Failed to handle webhook", e);
+        }
+    }
+    
+    /**
+     * Process transfer failure event with rollback
+     */
+    @Transactional
+    public void processTransferFailureEvent(Transaction transaction, String transferId, 
+                                         String failureCode, String failureMessage) {
+        // Double-check idempotency
+        if (transaction.getStatus() == TransactionStatus.FAILED ||
+            transaction.getStatus() == TransactionStatus.ROLLBACK_COMPLETED) {
+            log.warn("Transaction {} already failed - Skipping", transaction.getTransactionId());
+            return;
+        }
+
+        transaction.setStripeTransferStatus("failed");
+        transaction.setStripeTransferId(transferId);
+        transaction.setStripeFailureCode(failureCode);
+        transaction.setStripeFailureMessage(failureMessage);
+        transaction.setWebhookReceivedAt(LocalDateTime.now());
+
+        // Rollback: Refund sender account
+        BigDecimal refundAmount = transaction.getAmount();
+
+        try {
+            log.info("Rolling back Stripe transfer failure - Refunding {} to account {}",
+                    refundAmount, transaction.getSenderAccountId());
+
+            accountServiceClient.creditAccount(
+                    transaction.getSenderAccountId(),
+                    refundAmount,
+                    transaction.getTransactionId().toString(),
+                    "Refund for failed Stripe transfer: " + failureMessage
+            );
+
+            transaction.setCurrentStep(SagaStep.ROLLBACK_COMPLETED);
+            transaction.setStatus(TransactionStatus.FAILED);
+            log.info("Rollback completed for Stripe transfer failure - TxID: {}", transaction.getTransactionId());
+
+        } catch (Exception e) {
+            log.error("CRITICAL: Rollback failed for Stripe transfer failure - TxID: {} - Amount: {} - Manual intervention required!",
+                    transaction.getTransactionId(), refundAmount, e);
+
+            transaction.setCurrentStep(SagaStep.ROLLBACK_FAILED);
+            transaction.setStatus(TransactionStatus.ROLLBACK_FAILED);
+        }
+
+        transaction.setFailureReason("Stripe transfer failed: " + failureMessage);
+        transactionRepository.save(transaction);
+        
+        // Push SSE update to client
+        TransactionStatusUpdate sseUpdate = TransactionStatusUpdate.failed(
+                transaction.getTransactionId().toString(),
+                failureCode,
+                failureMessage
+        );
+        sseService.pushUpdate(transaction.getTransactionId().toString(), sseUpdate);
+        
+        sendTransactionNotification(transaction, "TransactionFailed", false);
+
+        // Centralized Audit Log
+        AuditEventDto auditEvent = AuditEventDto.builder()
+                .serviceName("transaction-service")
+                .entityType("Transaction")
+                .entityId(transaction.getTransactionId().toString())
+                .action("EXTERNAL_TRANSFER_FAILED")
+                .userId(transaction.getSenderUserId())
+                .newValues(Map.of(
+                    "stripeTransferId", transaction.getStripeTransferId() != null ? transaction.getStripeTransferId() : "",
+                    "failureReason", failureMessage,
+                    "status", TransactionStatus.FAILED.toString(),
+                    "rollbackStatus", transaction.getStatus().toString()
+                ))
+                .errorMessage(failureMessage)
+                .changes("External transfer failed and rolled back")
+                .result("FAILURE")
+                .build();
+        auditEventPublisher.publishAuditEvent(auditEvent);
+    }
+    
+
 }

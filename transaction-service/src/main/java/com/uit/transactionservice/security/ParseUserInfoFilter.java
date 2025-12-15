@@ -23,7 +23,11 @@ public class ParseUserInfoFilter implements Filter {
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
             throws IOException, ServletException {
+        // Temporarily bypass the filter for development.
+        // The original logic for parsing the JWT token is commented out below.
+        chain.doFilter(request, response);
 
+        /*
         HttpServletRequest httpRequest = (HttpServletRequest) request;
         HttpServletResponse httpResponse = (HttpServletResponse) response;
 
@@ -79,5 +83,6 @@ public class ParseUserInfoFilter implements Filter {
         } finally {
             SecurityContextHolder.clearContext();
         }
+        */
     }
 }

@@ -15,7 +15,7 @@ import java.util.Date;
 public class NotificationMessage {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
-    @Column(name = "notification_id", columnDefinition = "CHAR(36)")
+    @Column(name = "notification_id", length = 36)
     private String notificationId;
 
     @Column(name = "user_id", nullable = false)

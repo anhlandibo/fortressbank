@@ -76,60 +76,6 @@ public class AccountController {
         ));
     }
 
-    @PostMapping("/transfers")
-    @PreAuthorize("@accountService.isOwner(#transferRequest.fromAccountId, authentication.name)")
-    @RequireRole("user")
-    public ResponseEntity<ApiResponse<Object>> handleTransfer(@RequestBody TransferRequest transferRequest, HttpServletRequest request) {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> userInfo = (Map<String, Object>) request.getAttribute("userInfo");
-        String userId = (String) userInfo.get("sub");
-
-        // Extract fraud detection metadata from headers
-        String deviceFingerprint = request.getHeader("X-Device-Fingerprint");
-        String ipAddress = request.getHeader("X-Forwarded-For");
-        if (ipAddress == null) {
-            ipAddress = request.getRemoteAddr();
-        }
-        String location = request.getHeader("X-Location"); // Expected format: "City, Country" or "Country"
-
-        Object result = accountService.handleTransfer(transferRequest, userId, deviceFingerprint, ipAddress, location);
-        return ResponseEntity.ok(ApiResponse.success(result));
-    }
-
-    @PostMapping("/verify-transfer")
-    @RequireRole("user")
-    public ResponseEntity<ApiResponse<AccountDto>> verifyTransfer(@RequestBody VerifyTransferRequest verifyTransferRequest) {
-        AccountDto result = accountService.verifyTransfer(verifyTransferRequest);
-        return ResponseEntity.ok(ApiResponse.success(result));
-    }
-
-    /**
-     * Get audit logs for the current user's transfers.
-     * Users can only see their own transfer history.
-     */
-    @GetMapping("/audit/my-transfers")
-    @RequireRole("user")
-    public ResponseEntity<ApiResponse<List<TransferAuditLog>>> getMyTransferAudit(HttpServletRequest request) {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> userInfo = (Map<String, Object>) request.getAttribute("userInfo");
-        String userId = (String) userInfo.get("sub");
-
-        List<TransferAuditLog> auditLogs = auditService.getUserTransferHistory(userId);
-        return ResponseEntity.ok(ApiResponse.success(auditLogs));
-    }
-
-    /**
-     * Get audit logs for a specific account.
-     * Users can only see audit logs for accounts they own.
-     */
-    @GetMapping("/audit/account/{accountId}")
-    @PreAuthorize("@accountService.isOwner(#accountId, authentication.name)")
-    @RequireRole("user")
-    public ResponseEntity<ApiResponse<List<TransferAuditLog>>> getAccountAuditLogs(@PathVariable String accountId) {
-        List<TransferAuditLog> auditLogs = auditService.getAccountTransferHistory(accountId);
-        return ResponseEntity.ok(ApiResponse.success(auditLogs));
-    }
-
     /**
      * Debit (subtract) amount from an account.
      * 
@@ -144,6 +90,26 @@ public class AccountController {
         try {
             com.uit.accountservice.dto.response.AccountBalanceResponse response = 
                 accountService.debitAccount(accountId, request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "message", e.getMessage(),
+                "transactionId", request.getTransactionId()
+            ));
+        }
+    }
+
+    /**
+     * Credit (add) amount to an account.
+     */
+    @PostMapping("/{accountId}/credit")
+    public ResponseEntity<?> creditAccount(
+            @PathVariable String accountId,
+            @RequestBody com.uit.accountservice.dto.request.AccountBalanceRequest request) {
+        try {
+            com.uit.accountservice.dto.response.AccountBalanceResponse response = 
+                accountService.creditAccount(accountId, request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of(
@@ -177,6 +143,14 @@ public class AccountController {
         }
     }
 
+  // Section of BoLac
+    private String getCurrentUserId() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication.getName(); // Trả về 'sub' (userId)
+    }
+
+    
+
     /**
      * Get all accounts (Admin only).
      * Endpoint to retrieve a list of all accounts in the system.
@@ -190,11 +164,7 @@ public class AccountController {
 
 
 
-    // Section of BoLac
-    private String getCurrentUserId() {
-        var authentication = SecurityContextHolder.getContext().getAuthentication();
-        return authentication.getName(); // Trả về 'sub' (userId)
-    }
+    
 
     // GET /accounts
     @GetMapping
@@ -202,11 +172,25 @@ public class AccountController {
         List<AccountDto> accounts = accountService.getMyAccounts(getCurrentUserId());
         return ResponseEntity.ok(ApiResponse.success(accounts));
     }
-    
+
+    // GET /accounts/lookup?accountNumber=xxx
+    // Used to check if an account exists before initiating a transfer
+    @GetMapping("/lookup")
+    public ResponseEntity<ApiResponse<AccountDto>> lookupAccountByAccountNumber(
+            @RequestParam("accountNumber") String accountNumber) {
+        AccountDto account = accountService.getAccountByAccountNumber(accountNumber);
+        return ResponseEntity.ok(ApiResponse.success(account));
+    }
+
    @GetMapping("/{accountId}")
     public ResponseEntity<ApiResponse<AccountDto>> getAccountDetail(@PathVariable("accountId") String accountId) {
         AccountDto account = accountService.getAccountDetail(accountId, getCurrentUserId());
         return ResponseEntity.ok(ApiResponse.success(account));
+    }
+
+    @GetMapping("/by-number/{accountNumber}")
+    public ResponseEntity<AccountDto> getAccountByNumber(@PathVariable String accountNumber) {
+        return ResponseEntity.ok(accountService.getAccountByNumber(accountNumber));
     }
 
     // GET /accounts/{accountId}/balance
@@ -218,8 +202,28 @@ public class AccountController {
 
     // POST /accounts
     @PostMapping()
-    public ResponseEntity<ApiResponse<AccountDto>> createAccount(@Valid @RequestBody CreateAccountRequest request) {
-        AccountDto newAccount = accountService.createAccount(getCurrentUserId(), request);
+    public ResponseEntity<ApiResponse<AccountDto>> createAccount(
+        @Valid @RequestBody CreateAccountRequest request,
+        HttpServletRequest httpRequest
+    ) {
+        String userId = SecurityContextHolder.getContext().getAuthentication().getName();
+        String fullName = null;
+
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> userInfo = (Map<String, Object>) httpRequest.getAttribute("userInfo");
+            if (userInfo != null) {
+                if (userInfo.containsKey("name")) {
+                    fullName = (String) userInfo.get("name");
+                } 
+                else if (userInfo.containsKey("given_name")) {
+                    fullName = (String) userInfo.get("given_name");
+                }
+            }
+        } catch (Exception e) {
+            // Ignore error parsing name, service will handle fallback
+        }
+        AccountDto newAccount = accountService.createAccount(getCurrentUserId(), request, fullName);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(newAccount));
     }
@@ -283,8 +287,10 @@ public class AccountController {
     @PostMapping("/internal/create/{userId}")
     public ResponseEntity<ApiResponse<AccountDto>> createAccountForUser(
             @PathVariable("userId") String userId,
-            @Valid @RequestBody CreateAccountRequest request) {
-        AccountDto newAccount = accountService.createAccount(userId, request);
+            @Valid @RequestBody CreateAccountRequest request,
+            @RequestParam(value = "fullName", required = false) String fullName
+    ) {
+        AccountDto newAccount = accountService.createAccount(userId, request, fullName);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(newAccount));
     }

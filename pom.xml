@@ -19,6 +19,7 @@
         <module>risk-engine</module>
         <module>discovery</module>
         <module>reference-service</module>
+        <module>audit-service</module>
         <module>keycloak-extensions</module>
     </modules>
 
@@ -32,6 +33,7 @@
 
     <dependencyManagement>
         <dependencies>
+  
             <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>

@@ -46,6 +46,7 @@ public class SecurityConfig implements WebMvcConfigurer {
         this.roleCheckInterceptor = roleCheckInterceptor;
     }
     
+    
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http

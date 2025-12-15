@@ -8,6 +8,8 @@ import com.uit.userservice.keycloak.KeycloakClient;
 import com.uit.userservice.repository.UserRepository;
 import com.uit.sharedkernel.exception.AppException;
 import com.uit.sharedkernel.exception.ErrorCode;
+import com.uit.sharedkernel.audit.AuditEventDto;
+import com.uit.sharedkernel.audit.AuditEventPublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -26,6 +28,7 @@ public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
     private final KeycloakClient keycloakClient;
+    private final AuditEventPublisher auditEventPublisher;
 
     @Override
     public UserResponse getCurrentUser(Jwt jwt) {
@@ -49,9 +52,34 @@ public class UserServiceImpl implements UserService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_ALREADY_EXISTS, "User not found"));
 
+        // Capture old values for audit
+        Map<String, Object> oldValues = Map.of(
+            "fullName", user.getFullName() != null ? user.getFullName() : "",
+            "dob", user.getDob() != null ? user.getDob().toString() : "",
+            "phoneNumber", user.getPhoneNumber() != null ? user.getPhoneNumber() : ""
+        );
+
         user.setFullName(request.getFullName());
         user.setDob(request.getDob());
         user.setPhoneNumber(request.getPhoneNumber());
+        
+        // Log update event
+        AuditEventDto auditEvent = AuditEventDto.builder()
+                .serviceName("user-service")
+                .entityType("User")
+                .entityId(user.getId())
+                .action("UPDATE_USER")
+                .userId(userId)
+                .oldValues(oldValues)
+                .newValues(Map.of(
+                    "fullName", request.getFullName(),
+                    "dob", request.getDob() != null ? request.getDob().toString() : "",
+                    "phoneNumber", request.getPhoneNumber()
+                ))
+                .changes("User updated profile information")
+                .result("SUCCESS")
+                .build();
+        auditEventPublisher.publishAuditEvent(auditEvent);
 
         return toResponse(user);
     }
@@ -70,7 +98,26 @@ public class UserServiceImpl implements UserService {
         user.setUsername(username);
         user.setEmail(email);
         user.setFullName(name);
-        return userRepository.save(user);
+        User savedUser = userRepository.save(user);
+
+        // Log create event
+        AuditEventDto auditEvent = AuditEventDto.builder()
+                .serviceName("user-service")
+                .entityType("User")
+                .entityId(savedUser.getId())
+                .action("CREATE_USER")
+                .userId(savedUser.getId())
+                .newValues(Map.of(
+                    "username", username,
+                    "email", email,
+                    "fullName", name
+                ))
+                .changes("New user registered via Keycloak")
+                .result("SUCCESS")
+                .build();
+        auditEventPublisher.publishAuditEvent(auditEvent);
+
+        return savedUser;
     }
 
     private UserResponse toResponse(User user) {

@@ -18,8 +18,13 @@ public class CreateTransferRequest {
     @NotBlank(message = "Sender account ID is required")
     private String senderAccountId;
 
-    @NotBlank(message = "Receiver account ID is required")
-    private String receiverAccountId;
+
+
+    @NotBlank(message = "Sender account Number is required")
+    private String senderAccountNumber;
+
+    @NotBlank(message = "Receiver account Number is required")
+    private String receiverAccountNumber;
 
     @NotNull(message = "Amount is required")
     @DecimalMin(value = "0.01", message = "Amount must be greater than 0")

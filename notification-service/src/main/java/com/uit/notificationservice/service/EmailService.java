@@ -24,11 +24,14 @@ public class EmailService {
 
     private final JavaMailSender mailSender;
 
-    @Value("${spring.mail.username}")
+    @Value("${app.email.from-email:noreply@fortressbank.com}")
     private String fromEmail;
 
     @Value("${app.email.from-name:FortressBank}")
     private String fromName;
+    
+    @Value("${app.email.reply-to:}")
+    private String replyTo;
 
     private static final DateTimeFormatter TIMESTAMP_FORMATTER =
             DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm:ss");
@@ -40,8 +43,9 @@ public class EmailService {
      */
     public void sendEmailNotification(EmailNotificationRequest request) {
         try {
-            log.info("From email: {}", fromEmail);
-            log.info("Preparing to send email to: {}", request.getRecipientEmail());
+            log.info("Preparing to send email via SendGrid");
+            log.info("From: {} <{}>", fromName, fromEmail);
+            log.info("To: {}", request.getRecipientEmail());
 
             // Load HTML template
             String htmlTemplate = loadEmailTemplate();
@@ -49,18 +53,25 @@ public class EmailService {
             // Build HTML content with template variables
             String htmlContent = buildHtmlContent(htmlTemplate, request);
 
-            // Create and send email
+            // Create and send email via SendGrid
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, StandardCharsets.UTF_8.name());
 
+            // Set sender (must be verified in SendGrid)
             helper.setFrom(fromEmail, fromName);
             helper.setTo(request.getRecipientEmail());
             helper.setSubject(request.getTitle());
             helper.setText(htmlContent, true); // true = HTML content
+            
+            // Set reply-to if configured
+            if (replyTo != null && !replyTo.isEmpty()) {
+                helper.setReplyTo(replyTo);
+            }
 
+            // Send via SendGrid
             mailSender.send(message);
 
-            log.info("Email sent successfully to: {}", request.getRecipientEmail());
+            log.info("Email sent successfully via SendGrid to: {}", request.getRecipientEmail());
 
         } catch (MessagingException e) {
             log.error("Failed to send email to {}: {}", request.getRecipientEmail(), e.getMessage(), e);
@@ -86,12 +97,17 @@ public class EmailService {
 
     /**
      * Load HTML email template from resources
+     * Uses InputStream to work with both file system and JAR files
      */
     private String loadEmailTemplate() {
         try {
             ClassPathResource resource = new ClassPathResource("templates/email-notification.html");
-            byte[] bytes = Files.readAllBytes(resource.getFile().toPath());
-            return new String(bytes, StandardCharsets.UTF_8);
+            
+            // Use InputStream instead of getFile() to work with JAR files
+            try (var inputStream = resource.getInputStream()) {
+                byte[] bytes = inputStream.readAllBytes();
+                return new String(bytes, StandardCharsets.UTF_8);
+            }
         } catch (Exception e) {
             log.error("Failed to load email template: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to load email template", e);
