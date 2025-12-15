@@ -14,7 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Map;
 
-// @Component
+@Component
 public class ParseUserInfoFilter implements Filter {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
