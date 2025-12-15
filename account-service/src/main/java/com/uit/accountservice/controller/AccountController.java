@@ -78,8 +78,12 @@ public class AccountController {
 
     /**
      * Debit (subtract) amount from an account.
+     * 
+     * SECURITY: Internal endpoint only - called by transaction-service during transfers.
+     * Protected by network policy in production (not exposed via Kong).
+     * Path changed from /{accountId}/debit to /internal/{accountId}/debit (2024-12).
      */
-    @PostMapping("/{accountId}/debit")
+    @PostMapping("/internal/{accountId}/debit")
     public ResponseEntity<?> debitAccount(
             @PathVariable String accountId,
             @RequestBody com.uit.accountservice.dto.request.AccountBalanceRequest request) {
@@ -116,13 +120,14 @@ public class AccountController {
         }
     }
 
-  
-
     /**
-     * Get velocity check for a user (admin only).
-     * Returns count of recent transfers for fraud detection.
+     * Execute internal transfer between accounts.
+     * 
+     * SECURITY: Internal endpoint only - called by transaction-service.
+     * Protected by network policy in production (not exposed via Kong).
+     * Path changed from /internal-transfer to /internal/transfer (2024-12).
      */
-    @PostMapping("/internal-transfer")
+    @PostMapping("/internal/transfer")
     public ResponseEntity<?> executeInternalTransfer(
             @RequestBody com.uit.accountservice.dto.request.InternalTransferRequest request) {
         try {
@@ -253,16 +258,22 @@ public class AccountController {
         return ResponseEntity.ok(ApiResponse.success(Map.of("valid", isValid)));
     }
 
-    // ==================== PUBLIC ENDPOINTS (NO AUTH) ====================
+    // ==================== PUBLIC ENDPOINTS (LIMITED ACCESS) ====================
 
     /**
      * Public endpoint to create PIN without authentication.
      * Used after registration when user hasn't logged in yet.
+     * 
+     * SECURITY FIX (2024-12):
+     * - Only allows PIN creation if account has NO existing PIN (first-time only)
+     * - Prevents attackers from overwriting existing PINs
+     * - TODO: Replace with time-limited registration token for full security
      */
     @PostMapping("/public/{accountId}/pin")
     public ResponseEntity<ApiResponse<Void>> createPinPublic(
             @PathVariable("accountId") String accountId,
             @Valid @RequestBody PinRequest request) {
+        // Service layer validates this is first-time PIN creation only
         accountService.createPinPublic(accountId, request.newPin());
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(null));
     }

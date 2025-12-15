@@ -139,20 +139,28 @@ plugins:
       ssl_verify: false
 
   # GLOBAL rate limit
+  # SECURITY NOTE: In production with multiple Kong instances, use policy: redis
+  # to share counters across nodes. With policy: local, each node has its own
+  # counter which can be exploited by load-balancing across nodes.
+  # 
+  # SECURITY NOTE: limit_by: ip relies on Kong seeing real client IPs.
+  # Configure trusted_ips and real_ip_header in kong.conf when behind a proxy.
   - name: rate-limiting
     config:
       minute: 100
       hour: 5000
-      limit_by: ip
-      policy: local
+      limit_by: consumer  # Changed from ip - requires authentication first
+      policy: local  # TODO: Change to redis in production with KONG_REDIS_HOST env var
       fault_tolerant: true
+      hide_client_headers: false  # Show rate limit headers for debugging
 
-  # ACCOUNT rate limit
+  # ACCOUNT rate limit - stricter for financial operations
   - name: rate-limiting
     service: account-service
     config:
       minute: 60
       hour: 2000
+      limit_by: consumer  # Rate limit per authenticated user, not per IP
       policy: local
       fault_tolerant: true
 
@@ -162,5 +170,6 @@ plugins:
     config:
       minute: 80
       hour: 3000
+      limit_by: consumer
       policy: local
       fault_tolerant: true

@@ -1,0 +1,123 @@
+# =============================================================================
+# ACCOUNT SERVICE - PRODUCTION CONFIGURATION
+# =============================================================================
+# This configuration extends/overrides base configuration for production
+# Use with: SPRING_PROFILES_ACTIVE=prod
+# =============================================================================
+
+server:
+  port: 4001
+  max-http-request-header-size: 64KB
+  # SSL/TLS Configuration (if not using Kong for TLS termination)
+  # ssl:
+  #   enabled: true
+  #   key-store: classpath:keystore.p12
+  #   key-store-password: ${SSL_KEYSTORE_PASSWORD}
+  #   key-store-type: PKCS12
+  #   key-alias: fortressbank
+
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Production: Use HTTPS Keycloak endpoint
+          issuer-uri: ${JWT_ISSUER_URI:https://auth.fortressbank.com/realms/fortressbank-realm}
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    # Connection pool hardening
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      idle-timeout: 300000
+      connection-timeout: 20000
+      max-lifetime: 1200000
+      # Prevent SQL injection via connection properties
+      connection-test-query: SELECT 1
+      leak-detection-threshold: 60000
+
+  data:
+    redis:
+      host: ${SPRING_REDIS_HOST:redis}
+      port: ${SPRING_REDIS_PORT:6379}
+      # PRODUCTION: Redis password authentication
+      password: ${SPRING_REDIS_PASSWORD}
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 2
+          max-wait: 2000ms
+        # SSL for Redis (if using managed Redis with TLS)
+        # ssl: true
+
+  jpa:
+    hibernate:
+      ddl-auto: validate  # NEVER use create/update in production
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        # Performance tuning
+        jdbc.batch_size: 25
+        order_inserts: true
+        order_updates: true
+
+  sql:
+    init:
+      mode: never  # No auto-initialization in production
+
+jwt:
+  issuer-uri: ${JWT_ISSUER_URI:https://auth.fortressbank.com/realms/fortressbank-realm}
+
+# Actuator endpoints - restricted in production
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: when_authorized
+      probes:
+        enabled: true
+  # Metrics export (for monitoring)
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+# Logging - production appropriate
+logging:
+  level:
+    root: WARN
+    com.uit.accountservice: INFO
+    org.springframework.security: WARN
+    org.hibernate.SQL: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+  # Structured logging for log aggregation
+  # file:
+  #   name: /var/log/fortressbank/account-service.log
+
+# Eureka Configuration
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: ${EUREKA_DEFAULT_ZONE:http://discovery:8761/eureka}
+    register-with-eureka: true
+    fetch-registry: true
+    # Faster failure detection
+    registry-fetch-interval-seconds: 5
+  instance:
+    preferIpAddress: true
+    instance-id: ${spring.application.name}:${random.value}
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
