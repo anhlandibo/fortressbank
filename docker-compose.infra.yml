@@ -123,7 +123,7 @@ services:
       POSTGRES_PASSWORD: 123456
       POSTGRES_DB: notificationdb
     ports:
-      - "5436:5432"
+      - "5437:5432"
     volumes:
       # This 'notificationdb_data' is defined in docker-compose.base.yml
       - notificationdb_data:/var/lib/postgresql/data

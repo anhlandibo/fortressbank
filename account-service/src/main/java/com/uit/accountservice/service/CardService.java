@@ -129,7 +129,7 @@ public class CardService {
     private CardDto toDto(Card card) {
         return CardDto.builder()
                 .cardId(card.getCardId())
-                .cardNumber(maskCardNumber(card.getCardNumber())) // **** 1234
+                .cardNumber(card.getCardNumber())
                 .cardHolderName(card.getCardHolderName())
                 .expirationDate(card.getExpirationDate().toString())
                 .status(card.getStatus().name())

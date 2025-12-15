@@ -20,13 +20,13 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @EnableMethodSecurity(prePostEnabled = true)
 public class SecurityConfig implements WebMvcConfigurer {
     
-    // private final ParseUserInfoFilter parseUserInfoFilter;
-    // private final RoleCheckInterceptor roleCheckInterceptor;
+     private final ParseUserInfoFilter parseUserInfoFilter;
+     private final RoleCheckInterceptor roleCheckInterceptor;
     
-    // public SecurityConfig(ParseUserInfoFilter parseUserInfoFilter, RoleCheckInterceptor roleCheckInterceptor) {
-    //     this.parseUserInfoFilter = parseUserInfoFilter;
-    //     this.roleCheckInterceptor = roleCheckInterceptor;
-    // }
+     public SecurityConfig(ParseUserInfoFilter parseUserInfoFilter, RoleCheckInterceptor roleCheckInterceptor) {
+         this.parseUserInfoFilter = parseUserInfoFilter;
+         this.roleCheckInterceptor = roleCheckInterceptor;
+     }
     
     
     @Bean
@@ -35,17 +35,17 @@ public class SecurityConfig implements WebMvcConfigurer {
             .csrf(csrf -> csrf.disable())
             // .addFilterBefore(parseUserInfoFilter, UsernamePasswordAuthenticationFilter.class)
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/ws/**", "/accounts/**").permitAll() // Allow SOAP endpoints (JWT validated by SoapSecurityInterceptor)
+                .requestMatchers("/ws/**").permitAll() // Allow SOAP endpoints (JWT validated by SoapSecurityInterceptor)
                 .anyRequest().permitAll() // Kong already authenticated for REST
             );
         return http.build();
     }
     
-    // @Override
-    // public void addInterceptors(@NonNull InterceptorRegistry registry) {
-    //     registry.addInterceptor(roleCheckInterceptor)
-    //             .excludePathPatterns("/accounts/**", "/accounts/public/**"); // Exclude internal and public endpoints from interceptor
-    // }
+     @Override
+     public void addInterceptors(@NonNull InterceptorRegistry registry) {
+         registry.addInterceptor(roleCheckInterceptor)
+                 .excludePathPatterns("/accounts/**", "/accounts/public/**"); // Exclude internal and public endpoints from interceptor
+     }
 
     @Bean
     public PasswordEncoder passwordEncoder() {
