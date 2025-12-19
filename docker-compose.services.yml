@@ -111,7 +111,7 @@ services:
       redis:
         condition: service_healthy
       keycloak:
-        condition: service_started
+        condition: service_healthy
       config-server:
         condition: service_started
     ports:
@@ -174,6 +174,9 @@ services:
       JWT_ISSUER_URI: http://keycloak:8080/realms/fortressbank-realm
       SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_RABBITMQ_PORT: 5672
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      STRIPE_CONNECT_ACCOUNT_ID: ${STRIPE_CONNECT_ACCOUNT_ID}
     depends_on:
       discovery:
         condition: service_healthy

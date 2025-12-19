@@ -156,18 +156,25 @@ public class TransactionService {
     public TransactionResponse createTransfer(CreateTransferRequest request, String userId, String phoneNumber) {
         log.info("Creating transfer from {} to {} with OTP", request.getSenderAccountNumber(), request.getReceiverAccountNumber());
 
-        String senderUserId = userId;
+        String senderUserId = null;
 
         // 1. Validate Sender Account Exists (Always)
-        // We use getAccountByNumber to verify sender
+        // We use getAccountByNumber to verify sender and get userId
         try {
             Map<String, Object> senderInfo = accountServiceClient.getAccountByNumber(request.getSenderAccountNumber());
             if (senderInfo == null) {
                  throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Sender account not found: " + request.getSenderAccountNumber());
             }
-            // Optional: Verify that the resolved ID matches the ID in request if needed, 
-            // but we trust the number lookup.
-            // String resolvedSenderId = (String) senderInfo.get("accountId");
+
+            // Extract userId from sender account info
+            Object senderUserIdObj = senderInfo.get("userId");
+            if (senderUserIdObj != null) {
+                senderUserId = senderUserIdObj.toString();
+                log.info("Sender account validated - AccountNumber: {}, UserId: {}",
+                    request.getSenderAccountNumber(), senderUserId);
+            } else {
+                log.warn("Sender account has no userId: {}", request.getSenderAccountNumber());
+            }
         } catch (Exception e) {
              // If service call fails
              log.error("Failed to validate sender account: {}", e.getMessage());

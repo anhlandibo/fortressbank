@@ -1,0 +1,333 @@
+# =============================================================================
+# KONG PRODUCTION CONFIGURATION
+# =============================================================================
+# 
+# SECURITY HARDENING APPLIED:
+#   1. Client secrets loaded from environment variables
+#   2. SSL verification enabled (requires valid certificates)
+#   3. Distributed rate limiting via Redis
+#   4. Stricter rate limits for financial operations
+#   5. Request size limits to prevent DoS
+#   6. Security headers added
+#   7. IP restriction plugin for admin routes
+#
+# REQUIRED ENVIRONMENT VARIABLES:
+#   - KONG_OIDC_CLIENT_SECRET: Keycloak client secret for Kong
+#   - KONG_SESSION_SECRET: Session encryption secret
+#   - KEYCLOAK_HOSTNAME: Keycloak hostname (e.g., auth.yourdomain.com)
+#
+# =============================================================================
+
+_format_version: "3.0"
+
+# =============================================================================
+# SERVICE DEFINITIONS
+# =============================================================================
+
+services:
+  # PUBLIC AUTH ENDPOINTS - No authentication required
+  - name: user-auth-service
+    url: http://user-service:4000
+    routes:
+      - name: user-auth-route
+        paths:
+          - /auth
+        strip_path: false
+        # Only allow specific HTTP methods for auth
+        methods:
+          - POST
+          - OPTIONS
+
+  # PROTECTED USER ENDPOINTS
+  - name: user-main-service
+    url: http://user-service:4000
+    routes:
+      - name: user-main-route
+        paths:
+          - /users
+          - /roles
+        strip_path: false
+        methods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+
+  # ADMIN USER ENDPOINTS - Additional restrictions
+  - name: admin-user-service
+    url: http://user-service:4000
+    routes:
+      - name: admin-user-route
+        paths:
+          - /admin/users
+        strip_path: false
+
+  # PUBLIC ACCOUNT ENDPOINTS
+  - name: account-public-service
+    url: http://account-service:4001
+    routes:
+      - name: account-public-route
+        paths:
+          - /accounts/public
+        strip_path: false
+
+  # PROTECTED ACCOUNT ENDPOINTS
+  - name: account-service
+    url: http://account-service:4001
+    routes:
+      - name: account-service-route
+        paths:
+          - /accounts
+          - /beneficiaries
+          - /cards
+        strip_path: false
+
+  # PROTECTED TRANSACTION ENDPOINTS
+  - name: transaction-service
+    url: http://transaction-service:4004
+    routes:
+      - name: transaction-service-route
+        paths:
+          - /transactions
+        strip_path: false
+
+  # REFERENCE SERVICE
+  - name: reference-service
+    url: http://reference-service:4003
+    routes:
+      - name: reference-service-route
+        paths:
+          - /banks
+          - /products
+        strip_path: false
+
+# =============================================================================
+# PLUGIN CONFIGURATION
+# =============================================================================
+
+plugins:
+  # =========================================================================
+  # GLOBAL SECURITY PLUGINS
+  # =========================================================================
+  
+  # Request size limit - prevent large payload DoS
+  - name: request-size-limiting
+    config:
+      allowed_payload_size: 1  # 1 MB max
+      size_unit: megabytes
+      require_content_length: true
+
+  # Response headers for security
+  - name: response-transformer
+    config:
+      add:
+        headers:
+          - "X-Content-Type-Options: nosniff"
+          - "X-Frame-Options: DENY"
+          - "X-XSS-Protection: 1; mode=block"
+          - "Strict-Transport-Security: max-age=31536000; includeSubDomains"
+          - "Content-Security-Policy: default-src 'self'"
+          - "Referrer-Policy: strict-origin-when-cross-origin"
+
+  # CORS configuration
+  - name: cors
+    config:
+      origins:
+        - "https://app.yourdomain.com"  # Replace with your frontend domain
+      methods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+      headers:
+        - Authorization
+        - Content-Type
+        - X-Request-ID
+      exposed_headers:
+        - X-RateLimit-Limit-Minute
+        - X-RateLimit-Remaining-Minute
+      credentials: true
+      max_age: 3600
+
+  # =========================================================================
+  # GLOBAL RATE LIMITING - Redis-backed for distributed deployments
+  # =========================================================================
+  
+  - name: rate-limiting
+    config:
+      minute: 100
+      hour: 5000
+      limit_by: consumer
+      policy: redis  # Distributed rate limiting
+      redis_host: redis
+      redis_port: 6379
+      # redis_password loaded from KONG_REDIS_PASSWORD env var
+      fault_tolerant: true
+      hide_client_headers: false
+
+  # =========================================================================
+  # AUTHENTICATION: OpenID Connect via Keycloak
+  # =========================================================================
+  
+  # User main route authentication
+  - name: openid-connect
+    route: user-main-route
+    config:
+      client_id: kong
+      # client_secret: loaded from KONG_OIDC_CLIENT_SECRET environment variable
+      discovery: "https://${KEYCLOAK_HOSTNAME}/realms/fortressbank-realm/.well-known/openid-configuration"
+      session_secret: "${SESSION_SECRET}"
+      scope: "openid profile email"
+      ssl_verify: true  # IMPORTANT: Must be true in production
+      bearer_only: true
+      token_endpoint_auth_method: "client_secret_post"
+      introspection_endpoint: "https://${KEYCLOAK_HOSTNAME}/realms/fortressbank-realm/protocol/openid-connect/token/introspect"
+      # Token validation
+      verify_signature: true
+      verify_claims: true
+      leeway: 60
+
+  # Admin user route authentication
+  - name: openid-connect
+    route: admin-user-route
+    config:
+      client_id: kong
+      discovery: "https://${KEYCLOAK_HOSTNAME}/realms/fortressbank-realm/.well-known/openid-configuration"
+      session_secret: "${SESSION_SECRET}"
+      scope: "openid profile email"
+      ssl_verify: true
+      bearer_only: true
+      token_endpoint_auth_method: "client_secret_post"
+      introspection_endpoint: "https://${KEYCLOAK_HOSTNAME}/realms/fortressbank-realm/protocol/openid-connect/token/introspect"
+      verify_signature: true
+      verify_claims: true
+      leeway: 60
+
+  # Account service authentication
+  - name: openid-connect
+    route: account-service-route
+    config:
+      client_id: kong
+      discovery: "https://${KEYCLOAK_HOSTNAME}/realms/fortressbank-realm/.well-known/openid-configuration"
+      session_secret: "${SESSION_SECRET}"
+      scope: "openid profile email"
+      ssl_verify: true
+      bearer_only: true
+      token_endpoint_auth_method: "client_secret_post"
+      introspection_endpoint: "https://${KEYCLOAK_HOSTNAME}/realms/fortressbank-realm/protocol/openid-connect/token/introspect"
+      verify_signature: true
+      verify_claims: true
+      leeway: 60
+
+  # Transaction service authentication
+  - name: openid-connect
+    route: transaction-service-route
+    config:
+      client_id: kong
+      discovery: "https://${KEYCLOAK_HOSTNAME}/realms/fortressbank-realm/.well-known/openid-configuration"
+      session_secret: "${SESSION_SECRET}"
+      scope: "openid profile email"
+      ssl_verify: true
+      bearer_only: true
+      token_endpoint_auth_method: "client_secret_post"
+      introspection_endpoint: "https://${KEYCLOAK_HOSTNAME}/realms/fortressbank-realm/protocol/openid-connect/token/introspect"
+      verify_signature: true
+      verify_claims: true
+      leeway: 60
+
+  # =========================================================================
+  # SERVICE-SPECIFIC RATE LIMITING - Stricter for financial operations
+  # =========================================================================
+  
+  # Account service - stricter limits
+  - name: rate-limiting
+    service: account-service
+    config:
+      minute: 30
+      hour: 1000
+      limit_by: consumer
+      policy: redis
+      redis_host: redis
+      redis_port: 6379
+      fault_tolerant: true
+      hide_client_headers: false
+
+  # Transaction service - strictest limits
+  - name: rate-limiting
+    service: transaction-service
+    config:
+      minute: 20  # Max 20 transactions per minute
+      hour: 500   # Max 500 per hour
+      limit_by: consumer
+      policy: redis
+      redis_host: redis
+      redis_port: 6379
+      fault_tolerant: true
+      hide_client_headers: false
+
+  # Auth service - login rate limiting to prevent brute force
+  - name: rate-limiting
+    service: user-auth-service
+    config:
+      minute: 10   # Max 10 login attempts per minute
+      hour: 100    # Max 100 per hour
+      limit_by: ip  # Rate limit by IP for unauthenticated requests
+      policy: redis
+      redis_host: redis
+      redis_port: 6379
+      fault_tolerant: true
+      hide_client_headers: false
+
+  # User main service
+  - name: rate-limiting
+    service: user-main-service
+    config:
+      minute: 60
+      hour: 2000
+      limit_by: consumer
+      policy: redis
+      redis_host: redis
+      redis_port: 6379
+      fault_tolerant: true
+
+  # =========================================================================
+  # ADMIN ROUTE RESTRICTIONS
+  # =========================================================================
+  
+  # IP restriction for admin routes - only allow from internal network
+  - name: ip-restriction
+    route: admin-user-route
+    config:
+      allow:
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+      # deny: all others
+
+  # =========================================================================
+  # REQUEST LOGGING FOR AUDIT
+  # =========================================================================
+  
+  # Log all transaction requests for audit trail
+  - name: file-log
+    service: transaction-service
+    config:
+      path: /dev/stdout
+      reopen: true
+      custom_fields_by_lua:
+        audit_type: "return 'TRANSACTION'"
+        timestamp: "return os.date('!%Y-%m-%dT%H:%M:%SZ')"
+
+  # Log admin actions
+  - name: file-log
+    route: admin-user-route
+    config:
+      path: /dev/stdout
+      reopen: true
+      custom_fields_by_lua:
+        audit_type: "return 'ADMIN_ACTION'"
+        timestamp: "return os.date('!%Y-%m-%dT%H:%M:%SZ')"

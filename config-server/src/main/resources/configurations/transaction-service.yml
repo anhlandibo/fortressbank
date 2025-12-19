@@ -2,12 +2,14 @@ server:
   port: ${SERVER_PORT:4004}
   max-http-request-header-size: 64KB
 
-  # spring:
-  #   security:
-  #     oauth2:
-  #       resourceserver:
-  #         jwt:
-  #           issuer-uri: http://keycloak:8080/realms/fortressbank-realm
+# SECURITY FIX (2024-12): Enable JWT validation at backend for defense-in-depth
+# Previously commented out - backend now validates tokens independently of Kong
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://keycloak:8080/realms/fortressbank-realm
 
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://transaction-service-db:5432/transactiondb}
@@ -60,3 +62,14 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+
+stripe:
+  api-key: ${STRIPE_SECRET_KEY}
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET}
+  connect-account-id: ${STRIPE_CONNECT_ACCOUNT_ID}
+  payout:
+    timeout-seconds: 30
+    currency: ${STRIPE_CURRENCY:usd}
+    retry:
+      max-attempts: 3
+      backoff-delay-ms: 2000

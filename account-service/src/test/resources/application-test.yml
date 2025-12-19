@@ -23,6 +23,10 @@ spring:
     console:
       enabled: false
 
+  # Disable Flyway for tests - using Hibernate ddl-auto instead
+  flyway:
+    enabled: false
+
   # Disable cloud config for tests
   cloud:
     config:
