@@ -184,18 +184,18 @@ public class NotificationListener {
     private void sendPushNotification(String userId, UserPreference userPreference, 
                                      String transactionId, String title, String content) {
         if (userPreference.isPushNotificationEnabled() &&
-                userPreference.getDeviceTokens() != null &&
-                !userPreference.getDeviceTokens().isEmpty()) {
+                userPreference.getDeviceToken() != null &&
+                !userPreference.getDeviceToken().isEmpty()) {
 
             try {
                 notificationService.sendTransactionNotification(
                         userId,
-                        userPreference.getDeviceTokens(),
+                        userPreference.getDeviceToken(),
                         title,
                         content
                 );
                 log.info("Push notification sent for transaction: {} to user: {} ({} devices)",
-                        transactionId, userId, userPreference.getDeviceTokens().size());
+                        transactionId, userId, userPreference.getDeviceToken());
             } catch (Exception e) {
                 log.error("Failed to send push notification for transaction {} to user {}: {}",
                         transactionId, userId, e.getMessage());

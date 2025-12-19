@@ -59,6 +59,11 @@ public class RabbitMQConfig {
                 .with("notification.*");
     }
 
+//    @Bean
+//    public Binding notificationBinding() {
+//        return BindingBuilder.bind();
+//    }
+
     @Bean
     public MessageConverter jsonMessageConverter() {
         return new Jackson2JsonMessageConverter();

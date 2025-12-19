@@ -1,6 +1,5 @@
 package com.uit.notificationservice.controller;
 
-import com.uit.notificationservice.dto.AddDeviceTokenRequest;
 import com.uit.notificationservice.dto.UserPreferenceRequest;
 import com.uit.notificationservice.dto.UserPreferenceResponse;
 import com.uit.notificationservice.service.UserPreferenceService;
@@ -48,73 +47,30 @@ public class UserPreferenceController {
     }
 
     /**
-     * Create or update user preference
-     * PUT /user-preferences/{userId}
+     * Create new user preference
+     * POST /user-preferences/{userId}
      */
-    @PutMapping("/{userId}")
-    public ResponseEntity<ApiResponse<UserPreferenceResponse>> createOrUpdateUserPreference(
+    @PostMapping("/{userId}")
+    public ResponseEntity<ApiResponse<UserPreferenceResponse>> createUserPreference(
             @PathVariable String userId,
             @Valid @RequestBody UserPreferenceRequest request) {
         
-        log.info("PUT request to create/update user preference for user: {}", userId);
-        UserPreferenceResponse response = userPreferenceService.createOrUpdateUserPreference(userId, request);
-        return ResponseEntity.ok(ApiResponse.success(response));
+        log.info("POST request to create user preference for user: {}", userId);
+        UserPreferenceResponse response = userPreferenceService.createUserPreference(userId, request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(response));
     }
 
     /**
-     * Add device token to user preference
-     * POST /user-preferences/{userId}/device-tokens
+     * Update existing user preference
+     * PUT /user-preferences/{userId}
      */
-    @PostMapping("/{userId}/device-tokens")
-    public ResponseEntity<ApiResponse<UserPreferenceResponse>> addDeviceToken(
+    @PutMapping("/{userId}")
+    public ResponseEntity<ApiResponse<UserPreferenceResponse>> updateUserPreference(
             @PathVariable String userId,
-            @Valid @RequestBody AddDeviceTokenRequest request) {
+            @Valid @RequestBody UserPreferenceRequest request) {
         
-        log.info("POST request to add device token for user: {}", userId);
-        UserPreferenceResponse response = userPreferenceService.addDeviceToken(userId, request.getDeviceToken());
-        return ResponseEntity.ok(ApiResponse.success(response));
-    }
-
-    /**
-     * Remove device token from user preference
-     * DELETE /user-preferences/{userId}/device-tokens/{deviceToken}
-     */
-    @DeleteMapping("/{userId}/device-tokens")
-    public ResponseEntity<ApiResponse<UserPreferenceResponse>> removeDeviceToken(
-            @PathVariable String userId,
-            @RequestParam String deviceToken) {
-        
-        log.info("DELETE request to remove device token for user: {}", userId);
-        UserPreferenceResponse response = userPreferenceService.removeDeviceToken(userId, deviceToken);
-        return ResponseEntity.ok(ApiResponse.success(response));
-    }
-
-    /**
-     * Delete user preference
-     * DELETE /user-preferences/{userId}
-     */
-    @DeleteMapping("/{userId}")
-    public ResponseEntity<ApiResponse<Void>> deleteUserPreference(@PathVariable String userId) {
-        
-        log.info("DELETE request for user preference: {}", userId);
-        userPreferenceService.deleteUserPreference(userId);
-        return ResponseEntity.ok(ApiResponse.success(null));
-    }
-
-    /**
-     * Update notification settings
-     * PATCH /user-preferences/{userId}/notification-settings
-     */
-    @PatchMapping("/{userId}/notification-settings")
-    public ResponseEntity<ApiResponse<UserPreferenceResponse>> updateNotificationSettings(
-            @PathVariable String userId,
-            @RequestParam(required = false) Boolean pushEnabled,
-            @RequestParam(required = false) Boolean smsEnabled,
-            @RequestParam(required = false) Boolean emailEnabled) {
-        
-        log.info("PATCH request to update notification settings for user: {}", userId);
-        UserPreferenceResponse response = userPreferenceService.updateNotificationSettings(
-                userId, pushEnabled, smsEnabled, emailEnabled);
+        log.info("PUT request to update user preference for user: {}", userId);
+        UserPreferenceResponse response = userPreferenceService.updateUserPreference(userId, request);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 }
