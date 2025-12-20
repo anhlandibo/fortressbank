@@ -64,10 +64,10 @@ public class TransactionService {
         log.info("Processing SePay Top-up - AccountID: {} - Amount: {} - SePay Ref: {}", 
                 accountId, webhookData.getTransferAmount(), webhookData.getCode());
 
-        if (transactionRepository.existsByExternalTransactionId(webhookData.getCode())) {
-            log.warn("SePay transaction already processed - Ref: {}", webhookData.getCode());
-            return;
-        }
+        // if (transactionRepository.existsByExternalTransactionId(webhookData.getCode())) {
+        //     log.warn("SePay transaction already processed - Ref: {}", webhookData.getCode());
+        //     return;
+        // }
 
         String correlationId = UUID.randomUUID().toString();
         Transaction transaction = Transaction.builder()
@@ -97,6 +97,22 @@ public class TransactionService {
                     "SePay Deposit: " + webhookData.getDescription()
             );
 
+            // Audit Log 1: Account Balance Updated
+            auditEventPublisher.publishAuditEvent(AuditEventDto.builder()
+                    .serviceName("account-service") // Route to AccountAuditLog
+                    .entityType("Account")
+                    .entityId(accountId)
+                    .action("ACCOUNT_BALANCE_UPDATED_SEPAY")
+                    .userId(null)
+                    .newValues(Map.of(
+                        "transactionId", transaction.getTransactionId().toString(),
+                        "amount", webhookData.getTransferAmount(),
+                        "reason", "SePay Deposit"
+                    ))
+                    .changes("Account balance credited via SePay")
+                    .result("SUCCESS")
+                    .build());
+
             transaction.setStatus(TransactionStatus.COMPLETED);
             transaction.setCurrentStep(SagaStep.COMPLETED);
             transaction.setCompletedAt(LocalDateTime.now());
@@ -105,6 +121,23 @@ public class TransactionService {
             log.info("SePay Deposit Completed Successfully - TxID: {}", transaction.getTransactionId());
             
             sendTransactionNotification(transaction, "DepositCompleted", true);
+
+            // Audit Log 2: Transaction Completed
+            auditEventPublisher.publishAuditEvent(AuditEventDto.builder()
+                    .serviceName("transaction-service")
+                    .entityType("Transaction")
+                    .entityId(transaction.getTransactionId().toString())
+                    .action("SEPAY_TRANSACTION_COMPLETED")
+                    .userId(null)
+                    .newValues(Map.of(
+                        "receiverAccountId", accountId,
+                        "amount", webhookData.getTransferAmount(),
+                        "externalTransactionId", webhookData.getCode(),
+                        "status", TransactionStatus.COMPLETED.toString()
+                    ))
+                    .changes("SePay Deposit transaction completed")
+                    .result("SUCCESS")
+                    .build());
 
         } catch (Exception e) {
             log.error("Failed to credit account for SePay Deposit - TxID: {}", transaction.getTransactionId(), e);
