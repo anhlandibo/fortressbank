@@ -49,7 +49,7 @@ public class UserPreferenceService {
      * Create user preference
      */
     @Transactional
-    public UserPreferenceResponse createUserPreference(String userId, UserPreferenceRequest request) {
+    public UserPreferenceResponse createOrUpdateUserPreference(String userId, UserPreferenceRequest request) {
         log.info("Creating user preference for user: {}", userId);
         
         UserPreference preference = userPreferenceRepo.findById(userId)
@@ -58,8 +58,8 @@ public class UserPreferenceService {
                     UserPreference newPref = new UserPreference();
                     newPref.setUserId(userId);
                     newPref.setPushNotificationEnabled(true);
-                    newPref.setSmsNotificationEnabled(false);
-                    newPref.setEmailNotificationEnabled(false);
+                    newPref.setSmsNotificationEnabled(true);
+                    newPref.setEmailNotificationEnabled(true);
                     return newPref;
                 });
 
@@ -90,46 +90,6 @@ public class UserPreferenceService {
         preference = userPreferenceRepo.save(preference);
         log.info("User preference saved for user: {}", userId);
         
-        return mapToResponse(preference);
-    }
-
-    /**
-     * Update user preference
-     */
-
-    public UserPreferenceResponse updateUserPreference(String userId, UserPreferenceRequest request) {
-        log.info("Updating user preference for user: {}", userId);
-
-        UserPreference preference = userPreferenceRepo.findById(userId)
-                .orElseThrow(() -> new AppException(ErrorCode.USER_PREFERENCE_NOT_FOUND));
-
-        if (request.getPhoneNumber() != null) {
-            preference.setPhoneNumber(request.getPhoneNumber());
-        }
-
-        if (request.getEmail() != null) {
-            preference.setEmail(request.getEmail());
-        }
-
-        if (request.getDeviceToken() != null) {
-            preference.setDeviceToken(request.getDeviceToken());
-        }
-
-        if (request.getPushNotificationEnabled() != null) {
-            preference.setPushNotificationEnabled(request.getPushNotificationEnabled());
-        }
-
-        if (request.getSmsNotificationEnabled() != null) {
-            preference.setSmsNotificationEnabled(request.getSmsNotificationEnabled());
-        }
-
-        if (request.getEmailNotificationEnabled() != null) {
-            preference.setEmailNotificationEnabled(request.getEmailNotificationEnabled());
-        }
-
-        preference = userPreferenceRepo.save(preference);
-        log.info("User preference saved for user: {}", userId);
-
         return mapToResponse(preference);
     }
 
