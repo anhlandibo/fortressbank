@@ -47,30 +47,16 @@ public class UserPreferenceController {
     }
 
     /**
-     * Create new user preference
+     * Create or update user preference
      * POST /user-preferences/{userId}
      */
     @PostMapping("/{userId}")
-    public ResponseEntity<ApiResponse<UserPreferenceResponse>> createUserPreference(
+    public ResponseEntity<ApiResponse<UserPreferenceResponse>> createOrUpdateUserPreference(
             @PathVariable String userId,
             @Valid @RequestBody UserPreferenceRequest request) {
         
-        log.info("POST request to create user preference for user: {}", userId);
-        UserPreferenceResponse response = userPreferenceService.createUserPreference(userId, request);
+        log.info("POST request to create/update user preference for user: {}", userId);
+        UserPreferenceResponse response = userPreferenceService.createOrUpdateUserPreference(userId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(response));
-    }
-
-    /**
-     * Update existing user preference
-     * PUT /user-preferences/{userId}
-     */
-    @PutMapping("/{userId}")
-    public ResponseEntity<ApiResponse<UserPreferenceResponse>> updateUserPreference(
-            @PathVariable String userId,
-            @Valid @RequestBody UserPreferenceRequest request) {
-        
-        log.info("PUT request to update user preference for user: {}", userId);
-        UserPreferenceResponse response = userPreferenceService.updateUserPreference(userId, request);
-        return ResponseEntity.ok(ApiResponse.success(response));
     }
 }
