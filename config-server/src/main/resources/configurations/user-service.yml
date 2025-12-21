@@ -60,6 +60,8 @@ fortress-bank:
       subject: "Your OTP Code - Fortress Bank"
       expiry-minutes: 5
 
+  ai-service:
+    url: http://host.docker.internal:5000
 # Eureka Configuration
 eureka:
   client:

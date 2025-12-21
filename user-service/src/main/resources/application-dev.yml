@@ -32,6 +32,11 @@ logging:
     org.springframework.web: DEBUG
     org.hibernate: DEBUG
 
+# AI Service Configuration (Python service running locally)
+fortress-bank:
+  ai-service:
+    url: http://localhost:5000
+
 # Eureka Configuration
 eureka:
   client:

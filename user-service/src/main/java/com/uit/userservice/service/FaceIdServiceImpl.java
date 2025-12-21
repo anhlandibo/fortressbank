@@ -1,0 +1,156 @@
+// Path: com.uit.userservice.service.impl.FaceIdServiceImpl.java
+package com.uit.userservice.service;
+
+import com.uit.sharedkernel.exception.AppException;
+import com.uit.sharedkernel.exception.ErrorCode;
+import com.uit.userservice.client.FaceIdClient;
+import com.uit.userservice.dto.response.FaceRegistrationResult;
+import com.uit.userservice.dto.response.FaceVerificationResult;
+import com.uit.userservice.dto.response.ai.FaceRegisterResponse;
+import com.uit.userservice.dto.response.ai.FaceVerifyResponse;
+import com.uit.userservice.entity.User;
+import com.uit.userservice.repository.UserRepository;
+import feign.FeignException;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class FaceIdServiceImpl implements FaceIdService {
+
+    private final FaceIdClient faceIdClient;
+    private final UserRepository userRepository;
+
+    @Override
+    @Transactional
+    public FaceRegistrationResult registerFace(String userId, List<MultipartFile> files) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        if (Boolean.TRUE.equals(user.getIsFaceRegistered())) {
+            log.warn("User {} already has face registered", userId);
+            return new FaceRegistrationResult(
+                    false,
+                    "Face already registered for this user",
+                    "ALREADY_REGISTERED",
+                    null,
+                    null
+            );
+        }
+
+        try {
+            log.info("Sending face registration request to AI Service for user {}", userId);
+            FaceRegisterResponse aiResponse = faceIdClient.registerFace(userId, files);
+
+            if (aiResponse.isSuccess()) {
+                // Registration successful - update user
+                user.setIsFaceRegistered(true);
+                userRepository.save(user);
+
+                log.info("Face registration successful for user {}, samples: {}",
+                        userId, aiResponse.getSampleSize());
+
+                return new FaceRegistrationResult(
+                        true,
+                        "Face registered successfully",
+                        null,
+                        aiResponse.getAvgLivenessScore(),
+                        aiResponse.getSampleSize()
+                );
+            } else {
+                // Registration failed (spoof detected, poor quality, etc.)
+                log.warn("Face registration failed for user {}: {} - {}",
+                        userId, aiResponse.getReason(), aiResponse.getMessage());
+
+                return new FaceRegistrationResult(
+                        false,
+                        aiResponse.getMessage(),
+                        aiResponse.getReason(),
+                        aiResponse.getLivenessScore() != null ?
+                                aiResponse.getLivenessScore() : aiResponse.getAvgLivenessScore(),
+                        null
+                );
+            }
+
+        } catch (FeignException.ServiceUnavailable e) {
+            log.error("AI Service is unavailable: {}", e.getMessage());
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION,
+                    "Face recognition service is temporarily unavailable. Please try again later.");
+
+        } catch (FeignException e) {
+            log.error("AI Service error (status {}): {}", e.status(), e.getMessage());
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION,
+                    "Error communicating with face recognition service");
+
+        } catch (Exception e) {
+            log.error("Unexpected error during face registration for user {}: {}", userId, e.getMessage(), e);
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION,
+                    "Unexpected error during face registration. Please try again.");
+        }
+    }
+
+    @Override
+    public FaceVerificationResult verifyFace(String userId, List<MultipartFile> files) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        if (!Boolean.TRUE.equals(user.getIsFaceRegistered())) {
+            log.warn("User {} attempted verification without registered face", userId);
+            throw new AppException(ErrorCode.BAD_REQUEST, "Face not registered. Please register your face first.");
+        }
+
+        try {
+            log.info("Sending face verification request to AI Service for user {}", userId);
+            FaceVerifyResponse aiResponse = faceIdClient.verifyTransaction(userId, files);
+
+            if (aiResponse.isSuccess()) {
+                boolean isMatch = aiResponse.isMatch();
+
+                log.info("Face verification completed for user {}: match={}, similarity={}",
+                        userId, isMatch, aiResponse.getSimilarity());
+
+                return new FaceVerificationResult(
+                        isMatch,
+                        aiResponse.getMessage(),
+                        isMatch ? null : "FACE_MISMATCH",
+                        aiResponse.getSimilarity(),
+                        aiResponse.getAvgLivenessScore()
+                );
+            } else {
+                // Verification failed (spoof detected, no face found, etc.)
+                log.warn("Face verification failed for user {}: {} - {}",
+                        userId, aiResponse.getReason(), aiResponse.getMessage());
+
+                return new FaceVerificationResult(
+                        false,
+                        aiResponse.getMessage(),
+                        aiResponse.getReason(),
+                        aiResponse.getSimilarity(),
+                        aiResponse.getLivenessScore() != null ?
+                                aiResponse.getLivenessScore() : aiResponse.getAvgLivenessScore()
+                );
+            }
+
+        } catch (FeignException.ServiceUnavailable e) {
+            log.error("AI Service is unavailable: {}", e.getMessage());
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION,
+                    "Face recognition service is temporarily unavailable. Please try again later.");
+
+        } catch (FeignException e) {
+            log.error("AI Service error (status {}): {}", e.status(), e.getMessage());
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION,
+                    "Error communicating with face recognition service");
+
+        } catch (Exception e) {
+            log.error("Unexpected error during face verification for user {}: {}", userId, e.getMessage(), e);
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION,
+                    "Unexpected error during face verification. Please try again.");
+        }
+    }
+}
