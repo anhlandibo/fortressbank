@@ -44,7 +44,7 @@ CREATE TABLE user_preference (
     user_id VARCHAR(36) PRIMARY KEY,
     phone_number VARCHAR(20),
     email VARCHAR(255),
-    device_token VARCHAR(50),
+    device_token VARCHAR(500),
     push_notification_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     sms_notification_enabled BOOLEAN NOT NULL DEFAULT FALSE,
     email_notification_enabled BOOLEAN NOT NULL DEFAULT FALSE
