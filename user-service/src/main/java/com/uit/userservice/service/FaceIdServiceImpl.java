@@ -83,6 +83,57 @@ public class FaceIdServiceImpl implements FaceIdService {
     }
 
     @Override
+    @Transactional
+    public FaceRegistrationResult updateFace(String userId, List<MultipartFile> files) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        if (!Boolean.TRUE.equals(user.getIsFaceRegistered())) {
+            log.warn("User {} attempted to update face without initial registration", userId);
+            throw new AppException(ErrorCode.BAD_REQUEST,
+                    "No face registered yet. Please register your face first.");
+        }
+
+        try {
+            log.info("Sending face update request to AI Service for user {}", userId);
+            FaceRegisterResponse aiResponse = faceIdClient.registerFace(userId, files);
+
+            if (aiResponse.isSuccess()) {
+                log.info("Face update successful for user {}, samples: {}",
+                        userId, aiResponse.getSampleSize());
+
+                return new FaceRegistrationResult(
+                        true,
+                        "Face updated successfully",
+                        null,
+                        aiResponse.getAvgLivenessScore(),
+                        aiResponse.getSampleSize()
+                );
+            } else {
+                log.warn("Face update failed for user {}: {} - {}",
+                        userId, aiResponse.getReason(), aiResponse.getMessage());
+
+                throw new AppException(ErrorCode.INVALID_FACE_DATA, aiResponse.getMessage());
+            }
+
+        } catch (FeignException.ServiceUnavailable e) {
+            log.error("AI Service is unavailable: {}", e.getMessage());
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION,
+                    "Face recognition service is temporarily unavailable. Please try again later.");
+
+        } catch (FeignException e) {
+            log.error("AI Service error (status {}): {}", e.status(), e.getMessage());
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION,
+                    "Error communicating with face recognition service");
+
+        } catch (Exception e) {
+            log.error("Unexpected error during face update for user {}: {}", userId, e.getMessage(), e);
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION,
+                    "Unexpected error during face update. Please try again.");
+        }
+    }
+
+    @Override
     public FaceVerificationResult verifyFace(String userId, List<MultipartFile> files) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
@@ -102,7 +153,17 @@ public class FaceIdServiceImpl implements FaceIdService {
                 log.info("Face verification completed for user {}: match={}, similarity={}",
                         userId, isMatch, aiResponse.getSimilarity());
 
-                throw new AppException(ErrorCode.FACE_VERIFICATION_FAILED, "Face verification mismatch");
+                if (!isMatch) {
+                    throw new AppException(ErrorCode.FACE_VERIFICATION_FAILED, "Face verification mismatch");
+                }
+
+                return new FaceVerificationResult(
+                        true,
+                        "Face verification successful",
+                        null,
+                        aiResponse.getSimilarity(),
+                        aiResponse.getAvgLivenessScore()
+                );
             } else {
                 // Verification failed (spoof detected, no face found, etc.)
                 log.warn("Face verification failed for user {}: {} - {}",
