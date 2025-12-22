@@ -35,13 +35,7 @@ public class FaceIdServiceImpl implements FaceIdService {
 
         if (Boolean.TRUE.equals(user.getIsFaceRegistered())) {
             log.warn("User {} already has face registered", userId);
-            return new FaceRegistrationResult(
-                    false,
-                    "Face already registered for this user",
-                    "ALREADY_REGISTERED",
-                    null,
-                    null
-            );
+            throw new AppException(ErrorCode.INVALID_FACE_DATA, "Face already registered for this user");
         }
 
         try {
@@ -68,14 +62,7 @@ public class FaceIdServiceImpl implements FaceIdService {
                 log.warn("Face registration failed for user {}: {} - {}",
                         userId, aiResponse.getReason(), aiResponse.getMessage());
 
-                return new FaceRegistrationResult(
-                        false,
-                        aiResponse.getMessage(),
-                        aiResponse.getReason(),
-                        aiResponse.getLivenessScore() != null ?
-                                aiResponse.getLivenessScore() : aiResponse.getAvgLivenessScore(),
-                        null
-                );
+                throw new AppException(ErrorCode.INVALID_FACE_DATA, aiResponse.getMessage());
             }
 
         } catch (FeignException.ServiceUnavailable e) {
@@ -115,26 +102,13 @@ public class FaceIdServiceImpl implements FaceIdService {
                 log.info("Face verification completed for user {}: match={}, similarity={}",
                         userId, isMatch, aiResponse.getSimilarity());
 
-                return new FaceVerificationResult(
-                        isMatch,
-                        aiResponse.getMessage(),
-                        isMatch ? null : "FACE_MISMATCH",
-                        aiResponse.getSimilarity(),
-                        aiResponse.getAvgLivenessScore()
-                );
+                throw new AppException(ErrorCode.FACE_VERIFICATION_FAILED, "Face verification mismatch");
             } else {
                 // Verification failed (spoof detected, no face found, etc.)
                 log.warn("Face verification failed for user {}: {} - {}",
                         userId, aiResponse.getReason(), aiResponse.getMessage());
 
-                return new FaceVerificationResult(
-                        false,
-                        aiResponse.getMessage(),
-                        aiResponse.getReason(),
-                        aiResponse.getSimilarity(),
-                        aiResponse.getLivenessScore() != null ?
-                                aiResponse.getLivenessScore() : aiResponse.getAvgLivenessScore()
-                );
+                throw new AppException(ErrorCode.INVALID_FACE_DATA, aiResponse.getMessage());
             }
 
         } catch (FeignException.ServiceUnavailable e) {
