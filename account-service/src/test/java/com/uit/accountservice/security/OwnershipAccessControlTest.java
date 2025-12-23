@@ -2,6 +2,7 @@ package com.uit.accountservice.security;
 
 import com.uit.accountservice.AbstractIntegrationTest;
 import com.uit.accountservice.entity.Account;
+import com.uit.accountservice.entity.enums.AccountStatus;
 import com.uit.accountservice.repository.AccountRepository;
 import com.uit.accountservice.riskengine.RiskEngineService;
 import com.uit.accountservice.riskengine.dto.RiskAssessmentRequest;
@@ -35,7 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Security Integration Tests for OWASP A01:2021 Broken Access Control
- * 
+ *
  * These tests verify that ownership-based access control is properly enforced:
  * - Users can ONLY access accounts they own
  * - Users can ONLY initiate transfers from accounts they own
@@ -99,14 +100,18 @@ class OwnershipAccessControlTest extends AbstractIntegrationTest {
         // Alice's account - let Hibernate generate ID
         aliceAccount = accountRepository.saveAndFlush(Account.builder()
                 .userId("alice-user-id")
+                .accountNumber("1000000001")
                 .balance(BigDecimal.valueOf(1000.00))
+                .status(AccountStatus.ACTIVE)
                 .createdAt(LocalDateTime.now())
                 .build());
 
         // Bob's account - let Hibernate generate ID
         bobAccount = accountRepository.saveAndFlush(Account.builder()
                 .userId("bob-user-id")
+                .accountNumber("1000000002")
                 .balance(BigDecimal.valueOf(2000.00))
+                .status(AccountStatus.ACTIVE)
                 .createdAt(LocalDateTime.now())
                 .build());
     }
