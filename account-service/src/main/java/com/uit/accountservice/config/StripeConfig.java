@@ -1,4 +1,4 @@
-package com.uit.transactionservice.config;
+package com.uit.accountservice.config;
 
 import com.stripe.Stripe;
 import jakarta.annotation.PostConstruct;

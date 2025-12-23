@@ -251,10 +251,50 @@ public class AccountService {
     /**
      * Get account by account number (for lookup during transfer)
      * This endpoint is used to check if an account exists before initiating a transfer
+     * Supports both internal (Fortress Bank) and external (Stripe) lookups.
+     * 
      * @param accountNumber The account number to lookup
-     * @return AccountDto with account information (without sensitive data)
+     * @param bankName The name of the bank (optional, defaults to "Fortress Bank")
+     * @return AccountDto with account information
      */
-    public AccountDto getAccountByAccountNumber(String accountNumber) {
+    public AccountDto getAccountByAccountNumber(String accountNumber, String bankName) {
+        // External Lookup: Stripe
+        if ("Stripe".equalsIgnoreCase(bankName)) {
+            log.info("Performing external lookup on Stripe for account: {}", accountNumber);
+            try {
+                // Synchronous call to Stripe API - Fast enough for direct lookup
+                com.stripe.model.Account stripeAccount = com.stripe.model.Account.retrieve(accountNumber);
+                
+                if (stripeAccount.getDeleted() != null && stripeAccount.getDeleted()) {
+                    throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Stripe account is deleted: " + accountNumber);
+                }
+
+                // Map Stripe account to AccountDto
+                String displayName = "Stripe User";
+                if (stripeAccount.getBusinessProfile() != null && stripeAccount.getBusinessProfile().getName() != null) {
+                    displayName = stripeAccount.getBusinessProfile().getName();
+                } else if (stripeAccount.getEmail() != null) {
+                    displayName = stripeAccount.getEmail();
+                }
+
+                return AccountDto.builder()
+                        .accountId(stripeAccount.getId()) // Use Stripe ID as Account ID
+                        .accountNumber(stripeAccount.getId())
+                        .fullName(displayName)
+                        .accountStatus(AccountStatus.ACTIVE.name()) 
+                        .build();
+
+            } catch (com.stripe.exception.StripeException e) {
+                log.error("Stripe lookup failed: {}", e.getMessage());
+                throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND, 
+                    "Stripe account validation failed: " + e.getMessage());
+            } catch (Exception e) {
+                log.error("Unexpected error during Stripe lookup", e);
+                throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION, "External lookup error");
+            }
+        }
+
+        // Internal Lookup: Fortress Bank
         Account account = accountRepository.findByAccountNumber(accountNumber)
                 .orElseThrow(() -> new AppException(ErrorCode.ACCOUNT_NOT_FOUND,
                     "Account not found with account number: " + accountNumber));
@@ -277,7 +317,7 @@ public class AccountService {
             }
         } catch (Exception e) {
             log.error("Failed to fetch user name for account lookup: {}", e.getMessage());
-            accountDto.setFullName("Unknown User"); // Hoặc để null tùy logic FE
+            accountDto.setFullName("Unknown User");
         }
 
         return accountDto;
