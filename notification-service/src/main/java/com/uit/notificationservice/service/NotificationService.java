@@ -37,8 +37,6 @@ public class NotificationService {
 
         TextBeeRequest request = new TextBeeRequest(new String[]{"0857311444"}, "Your FortressBank verification code is: " + otpCode);
 
-
-
         webClientBuilder.build()
                 .post()
                 .uri(url)

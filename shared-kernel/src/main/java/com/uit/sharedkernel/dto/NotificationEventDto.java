@@ -23,4 +23,5 @@ public class NotificationEventDto implements Serializable {
     private boolean success;
     private String message;
     private String timestamp;
+    private Integer notiWho;
 }

@@ -28,7 +28,7 @@ public class NotificationListener {
      * Routing Key: otp.generated
      * Purpose: Send OTP via SMS to user's phone number
      */
-    @RabbitListener(queues = "notification.otp.queue")
+    @RabbitListener(queues = RabbitMQConstants.OTP_QUEUE)
     public void handleOtpNotification(Map<String, Object> message) {
         log.info("Received OTP notification event: {}", message);
 
@@ -56,7 +56,7 @@ public class NotificationListener {
      * Routing Keys: notification.TransactionCompleted, notification.TransactionFailed, notification.ExternalTransferInitiated
      * Purpose: Send multi-channel notifications (Push, SMS, Email) based on user preferences
      */
-    @RabbitListener(queues = RabbitMQConstants.NOTIFICATION_QUEUE)
+    @RabbitListener(queues = RabbitMQConstants.TRANSACTION_QUEUE)
     public void handleTransactionNotification(Map<String, Object> message) {
         log.info("Received transaction notification event: {}", message);
 
@@ -67,6 +67,7 @@ public class NotificationListener {
             String senderAccountId = (String) message.get("senderAccountId");
             String receiverUserId = (String) message.get("receiverUserId");
             String receiverAccountId = (String) message.get("receiverAccountId");
+            Integer notiWho = (Integer) message.get("notiWho"); // False: receiver, true: sender
             Object amountObj = message.get("amount");
             String status = (String) message.get("status");
             boolean success = Boolean.TRUE.equals(message.get("success")); // Safe unboxing
@@ -84,29 +85,30 @@ public class NotificationListener {
 
             // ========== SENDER NOTIFICATION (Money Deducted) ==========
             log.info("Processing sender notification for user: {} (account: {})", senderUserId, senderAccountId);
-            
-            UserPreference senderPreference = userPreferenceRepo.findById(senderUserId)
-                    .orElseGet(() -> {
-                        log.warn("User preference not found for sender user: {}, using defaults", senderUserId);
-                        return createDefaultPreference(senderUserId);
-                    });
+            if (notiWho == 0 || notiWho == 1) {
+                UserPreference senderPreference = userPreferenceRepo.findById(senderUserId)
+                        .orElseGet(() -> {
+                            log.warn("User preference not found for sender user: {}, using defaults", senderUserId);
+                            return createDefaultPreference(senderUserId);
+                        });
 
-            // Build sender notification (money deducted)
-            String senderTitle = success ? "Money Sent Successfully" : "Transaction Failed";
-            String senderContent = formatSenderNotification(success, amount, receiverAccountId, status, notificationMessage);
+                // Build sender notification (money deducted)
+                String senderTitle = success ? "Money Sent Successfully" : "Transaction Failed";
+                String senderContent = formatSenderNotification(success, amount, receiverAccountId, status, notificationMessage);
 
-            // Send Push Notification to Sender
-            sendPushNotification(senderUserId, senderPreference, transactionId, senderTitle, senderContent);
-            
-            // Send Email Notification to Sender
-            sendEmailNotification(senderUserId, senderPreference, transactionId, senderTitle,
-                                 senderContent, status, amount, success, "Recipient", receiverAccountId);
+                // Send Push Notification to Sender
+                sendPushNotification(senderUserId, senderPreference, transactionId, senderTitle, senderContent);
+
+                // Send Email Notification to Sender
+                sendEmailNotification(senderUserId, senderPreference, transactionId, senderTitle,
+                        senderContent, status, amount, success, "Recipient", receiverAccountId);
+            }
 
             // ========== RECEIVER NOTIFICATION (Money Received) ==========
             // Only send to receiver if transaction is successful
-            if (success) {
+            if (success && notiWho == 0 || notiWho == 2) {
                 log.info("Processing receiver notification for user: {} (account: {})", receiverUserId, receiverAccountId);
-                
+
                 UserPreference receiverPreference = userPreferenceRepo.findById(receiverUserId)
                         .orElseGet(() -> {
                             log.warn("User preference not found for receiver user: {}, using defaults", receiverUserId);
@@ -119,10 +121,10 @@ public class NotificationListener {
 
                 // Send Push Notification to Receiver
                 sendPushNotification(receiverUserId, receiverPreference, transactionId, receiverTitle, receiverContent);
-                
+
                 // Send Email Notification to Receiver
                 sendEmailNotification(receiverUserId, receiverPreference, transactionId, receiverTitle,
-                                     receiverContent, status, amount, true, "Sender", senderAccountId);
+                        receiverContent, status, amount, true, "Sender", senderAccountId);
             }
 
             log.info("Transaction notification processing completed for: {}", transactionId);
@@ -137,7 +139,7 @@ public class NotificationListener {
      * Format sender notification message (money deducted)
      */
     private String formatSenderNotification(boolean success, BigDecimal amount,
-                                           String receiverAccountId, String status, String message) {
+                                            String receiverAccountId, String status, String message) {
         StringBuilder sb = new StringBuilder();
 
         if (success) {
@@ -181,8 +183,8 @@ public class NotificationListener {
     /**
      * Send push notification to user
      */
-    private void sendPushNotification(String userId, UserPreference userPreference, 
-                                     String transactionId, String title, String content) {
+    private void sendPushNotification(String userId, UserPreference userPreference,
+                                      String transactionId, String title, String content) {
         if (userPreference.isPushNotificationEnabled() &&
                 userPreference.getDeviceToken() != null &&
                 !userPreference.getDeviceToken().isEmpty()) {
@@ -208,14 +210,14 @@ public class NotificationListener {
     /**
      * Send email notification to user
      */
-    private void sendEmailNotification(String userId, UserPreference userPreference, 
+    private void sendEmailNotification(String userId, UserPreference userPreference,
                                        String transactionId, String title, String content,
                                        String status, BigDecimal amount, boolean success,
                                        String counterPartyLabel, String counterPartyAccountId) {
         if (userPreference.isEmailNotificationEnabled() &&
                 userPreference.getEmail() != null &&
                 !userPreference.getEmail().isEmpty()) {
-            
+
             try {
                 // Build additional info for email
                 List<EmailNotificationRequest.InfoRow> additionalInfo = new ArrayList<>();
@@ -235,9 +237,9 @@ public class NotificationListener {
                         .label("Status: ")
                         .value(status)
                         .build());
-                
+
                 String badge = success ? "SUCCESS" : "FAILED";
-                
+
                 notificationService.sendTransactionEmail(
                         userPreference.getEmail(),
                         title,
@@ -245,7 +247,7 @@ public class NotificationListener {
                         badge,
                         additionalInfo
                 );
-                
+
                 log.info("Email notification sent for transaction: {} to user: {} ({})",
                         transactionId, userId, userPreference.getEmail());
             } catch (Exception e) {
