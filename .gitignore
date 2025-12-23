@@ -65,3 +65,4 @@ secrets/
 
 # AI/Tool directories
 .gemini
+bootstrap.yml

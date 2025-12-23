@@ -152,6 +152,94 @@ public class TransactionService {
         }
     }
 
+
+    /**
+     * Create Admin Deposit (Manual Top-up)
+     * This creates a transaction record first, then credits the account.
+     */
+    @Transactional
+    public TransactionResponse createAdminDeposit(com.uit.transactionservice.dto.request.AdminDepositRequest request) {
+        log.info("Processing Admin Deposit - Account: {} - Amount: {}", request.getAccountNumber(), request.getAmount());
+
+        // 1. Resolve Account ID from Account Number
+        String accountId = null;
+        try {
+            Map<String, Object> accountInfo = accountServiceClient.getAccountByNumber(request.getAccountNumber());
+            if (accountInfo != null) {
+                accountId = (String) accountInfo.get("accountId");
+            } else {
+                throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Account number not found: " + request.getAccountNumber());
+            }
+        } catch (Exception e) {
+            log.error("Failed to resolve account number: {}", request.getAccountNumber(), e);
+            throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Account validation failed");
+        }
+
+        // 2. Create Transaction Record (DEPOSIT)
+        String correlationId = UUID.randomUUID().toString();
+        Transaction transaction = Transaction.builder()
+                .senderAccountId("ADMIN_DEPOSIT") // Virtual sender
+                .receiverAccountId(accountId)
+                .receiverAccountNumber(request.getAccountNumber())
+                .amount(request.getAmount())
+                .feeAmount(BigDecimal.ZERO)
+                .transactionType(TransactionType.DEPOSIT)
+                .status(TransactionStatus.PENDING)
+                .description(request.getDescription() != null ? request.getDescription() : "Admin Deposit")
+                .correlationId(correlationId)
+                .currentStep(SagaStep.STARTED)
+                .createdAt(LocalDateTime.now())
+                .build();
+        
+        transaction = transactionRepository.save(transaction);
+        log.info("Created Admin Deposit Transaction - TxID: {}", transaction.getTransactionId());
+
+        // 3. Credit Account via Account Service
+        try {
+            accountServiceClient.creditAccount(
+                    accountId,
+                    request.getAmount(),
+                    transaction.getTransactionId().toString(),
+                    "Admin Deposit: " + transaction.getDescription()
+            );
+
+            // 4. Update Transaction Status
+            transaction.setStatus(TransactionStatus.COMPLETED);
+            transaction.setCurrentStep(SagaStep.COMPLETED);
+            transaction.setCompletedAt(LocalDateTime.now());
+            transactionRepository.save(transaction);
+            
+            // 5. Send Notification & Audit
+            sendTransactionNotification(transaction, "DepositCompleted", true);
+
+            auditEventPublisher.publishAuditEvent(AuditEventDto.builder()
+                    .serviceName("transaction-service")
+                    .entityType("Transaction")
+                    .entityId(transaction.getTransactionId().toString())
+                    .action("ADMIN_DEPOSIT_COMPLETED")
+                    .userId("ADMIN") // Ideally get actual admin ID from context
+                    .newValues(Map.of(
+                        "receiverAccountId", accountId,
+                        "amount", request.getAmount(),
+                        "status", TransactionStatus.COMPLETED.toString()
+                    ))
+                    .changes("Admin deposit completed")
+                    .result("SUCCESS")
+                    .build());
+
+            return transactionMapper.toResponse(transaction);
+
+        } catch (Exception e) {
+            log.error("Failed to process admin deposit - TxID: {}", transaction.getTransactionId(), e);
+            
+            transaction.setStatus(TransactionStatus.FAILED);
+            transaction.setFailureReason("Failed to credit account: " + e.getMessage());
+            transactionRepository.save(transaction);
+            
+            throw new RuntimeException("Failed to process admin deposit", e);
+        }
+    }
+
     @Transactional
     public TransactionResponse createTransfer(CreateTransferRequest request, String userId, String phoneNumber) {
         log.info("Creating transfer from {} to {} with OTP", request.getSenderAccountNumber(), request.getReceiverAccountNumber());
@@ -322,12 +410,23 @@ public class TransactionService {
     }
 
     /**
-     * Get transaction history by account
+     * Get transaction history by account number with filtering
+     * type: SENT, RECEIVED, or ALL (null)
      */
-    public Page<TransactionResponse> getTransactionHistory(String accountId, Pageable pageable) {
-        log.info("Getting transaction history for account: {}", accountId);
-        return transactionRepository.findBySenderAccountIdOrReceiverAccountId(accountId, accountId, pageable)
-                .map(transactionMapper::toResponse);
+    public Page<TransactionResponse> getTransactionHistory(String accountNumber, String type, Pageable pageable) {
+        log.info("Getting transaction history for account: {} - Type: {}", accountNumber, type);
+        
+        Page<Transaction> page;
+        if ("SENT".equalsIgnoreCase(type)) {
+            page = transactionRepository.findBySenderAccountNumber(accountNumber, pageable);
+        } else if ("RECEIVED".equalsIgnoreCase(type)) {
+            page = transactionRepository.findByReceiverAccountNumber(accountNumber, pageable);
+        } else {
+            // ALL
+            page = transactionRepository.findBySenderAccountNumberOrReceiverAccountNumber(accountNumber, accountNumber, pageable);
+        }
+        
+        return page.map(transactionMapper::toResponse);
     }
 
     /**
