@@ -65,3 +65,5 @@ secrets/
 
 # AI/Tool directories
 .gemini
+
+notification-service/src/main/resources/application.yml
