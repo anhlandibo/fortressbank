@@ -56,7 +56,7 @@ public class NotificationListener {
      * Routing Keys: notification.TransactionCompleted, notification.TransactionFailed, notification.ExternalTransferInitiated
      * Purpose: Send multi-channel notifications (Push, SMS, Email) based on user preferences
      */
-    @RabbitListener(queues = RabbitMQConstants.NOTIFICATION_QUEUE)
+    @RabbitListener(queues = RabbitMQConstants.TRANSACTION_QUEUE)
     public void handleTransactionNotification(Map<String, Object> message) {
         log.info("Received transaction notification event: {}", message);
 

@@ -39,7 +39,7 @@ public class RabbitMQConfig {
     // Queue for transaction completion/failure notifications
     @Bean
     public Queue transactionNotificationQueue() {
-        return new Queue(RabbitMQConstants.NOTIFICATION_QUEUE, true);
+        return new Queue(RabbitMQConstants.TRANSACTION_QUEUE, true);
     }
 
     // Binding: OTP events -> OTP Queue
