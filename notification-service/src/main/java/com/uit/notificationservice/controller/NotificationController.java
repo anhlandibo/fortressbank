@@ -27,14 +27,14 @@ public class NotificationController {
         return ResponseEntity.ok(ApiResponse.success("SMS OTP sent successfully."));
     }
 
-    @GetMapping("/")
+    @GetMapping
     public ResponseEntity<ApiResponse<List<SendNotificationResponse>>> getNotifications() {
         List<NotificationMessage> notifications = notificationService.getNotifications();
         List<SendNotificationResponse> responses = mapper.toResponseDto(notifications);
         return ResponseEntity.ok(ApiResponse.success(responses));
     }
 
-    @PostMapping("/")
+    @PostMapping
     public ResponseEntity<ApiResponse<SendNotificationResponse>> sendNotification(@RequestBody SendNotificationRequest request) throws FirebaseMessagingException {
 //        SendNotificationRequest mockRequest = new SendNotificationRequest(
 //                "userId",

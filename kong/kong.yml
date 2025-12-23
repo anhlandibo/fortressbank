@@ -73,6 +73,7 @@ services:
       - name: notification-service-route
         paths:
           - /notifications
+          - /user-preferences
         strip_path: false
 
 # ============================================================================
