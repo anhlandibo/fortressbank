@@ -118,6 +118,7 @@ services:
       JWT_ISSUER_URI: http://keycloak:8080/realms/fortressbank-realm
       SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_RABBITMQ_PORT: 5672
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
     depends_on:
       discovery:
         condition: service_healthy
