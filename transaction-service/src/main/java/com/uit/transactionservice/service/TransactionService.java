@@ -64,20 +64,33 @@ public class TransactionService {
      * Handle SePay webhook for Top-up (Deposit)
      */
     @Transactional
-    public void handleSepayTopup(SepayWebhookDto webhookData, String accountId) {
+    public void handleSepayTopup(SepayWebhookDto webhookData, String accountNumber) {
         log.info("Processing SePay Top-up - AccountID: {} - Amount: {} - SePay Ref: {}", 
-                accountId, webhookData.getTransferAmount(), webhookData.getCode());
+                accountNumber, webhookData.getTransferAmount(), webhookData.getCode());
 
         // if (transactionRepository.existsByExternalTransactionId(webhookData.getCode())) {
         //     log.warn("SePay transaction already processed - Ref: {}", webhookData.getCode());
         //     return;
         // }
-        String receiverUserId = accountServiceClient.getAccountByNumber(accountId).get("userId").toString();
+       String receiverAccountId = null;
+       String receiverUserId = null;
+        try {
+            Map<String, Object> receiverAccount = accountServiceClient.getAccountByNumber(accountNumber);
+            if (receiverAccount != null) {
+                receiverAccountId = (String) receiverAccount.get("accountId");
+                receiverUserId = (String) receiverAccount.get("userId");
+            } else {
+                throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Account number not found: " + accountNumber    );
+            }
+        } catch (Exception e) {
+            log.error("Failed to resolve account number: {}", accountNumber, e);
+            throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Account validation failed");
+        }
         String correlationId = UUID.randomUUID().toString();
 
         Transaction transaction = Transaction.builder()
                 .senderAccountId("SEPAY_GATEWAY") // Virtual sender
-                .receiverAccountId(accountId)
+                .receiverAccountId(receiverAccountId)
                 .senderUserId(null)
                 .receiverUserId(receiverUserId)
                 .amount(webhookData.getTransferAmount())
@@ -95,10 +108,10 @@ public class TransactionService {
         log.info("Created Deposit Transaction - TxID: {}", transaction.getTransactionId());
 
         try {
-            log.info("Crediting account {} with amount {}", accountId, webhookData.getTransferAmount());
+            log.info("Crediting account {} with amount {}", accountNumber, webhookData.getTransferAmount());
             
             accountServiceClient.creditAccount(
-                    accountId,
+                    receiverAccountId,
                     webhookData.getTransferAmount(),
                     transaction.getTransactionId().toString(),
                     "SePay Deposit: " + webhookData.getDescription()
@@ -108,7 +121,7 @@ public class TransactionService {
             auditEventPublisher.publishAuditEvent(AuditEventDto.builder()
                     .serviceName("account-service") // Route to AccountAuditLog
                     .entityType("Account")
-                    .entityId(accountId)
+                    .entityId(receiverAccountId)
                     .action("ACCOUNT_BALANCE_UPDATED_SEPAY")
                     .userId(null)
                     .newValues(Map.of(
@@ -127,7 +140,7 @@ public class TransactionService {
             
             log.info("SePay Deposit Completed Successfully - TxID: {}", transaction.getTransactionId());
             
-            sendTransactionNotification(transaction, "DepositCompleted", true);
+            sendTransactionNotification(transaction, "DepositCompleted", true,2);
 
             // Audit Log 2: Transaction Completed
             auditEventPublisher.publishAuditEvent(AuditEventDto.builder()
@@ -137,7 +150,7 @@ public class TransactionService {
                     .action("SEPAY_TRANSACTION_COMPLETED")
                     .userId(null)
                     .newValues(Map.of(
-                        "receiverAccountId", accountId,
+                        "receiverAccountId", receiverAccountId,
                         "amount", webhookData.getTransferAmount(),
                         "externalTransactionId", webhookData.getCode(),
                         "status", TransactionStatus.COMPLETED.toString()
@@ -154,7 +167,7 @@ public class TransactionService {
             transaction.setFailureReason("Failed to credit account: " + e.getMessage());
             transactionRepository.save(transaction);
             
-            sendTransactionNotification(transaction, "DepositFailed", false);
+            sendTransactionNotification(transaction, "DepositFailed", false,2);
             throw new RuntimeException("Failed to process SePay deposit", e);
         }
     }
@@ -205,7 +218,7 @@ public class TransactionService {
         transaction = transactionRepository.save(transaction);
         log.info("Created Admin Deposit Transaction - TxID: {}", transaction.getTransactionId());
 
-        sendTransactionNotification(transaction, "DepositInitiated", true);
+        sendTransactionNotification(transaction, "DepositInitiated", true,2);
         // 3. Credit Account via Account Service
         try {
             accountServiceClient.creditAccount(
@@ -222,7 +235,7 @@ public class TransactionService {
             transactionRepository.save(transaction);
             
             // 5. Send Notification & Audit
-            sendTransactionNotification(transaction, "DepositCompleted", true);
+            sendTransactionNotification(transaction, "DepositCompleted", true,2);
 
             auditEventPublisher.publishAuditEvent(AuditEventDto.builder()
                     .serviceName("transaction-service")
@@ -344,8 +357,8 @@ public class TransactionService {
                 .senderAccountNumber(request.getSenderAccountNumber())
                 .senderUserId(senderUserId)
                 .receiverAccountNumber(request.getReceiverAccountNumber())
-                .receiverAccountId(receiverAccountId) // Null for external
-                .receiverUserId(receiverUserId)       // Null for external
+                .receiverAccountId(receiverAccountId) 
+                .receiverUserId(receiverUserId)       
                 .amount(request.getAmount())
                 .feeAmount(fee)
                 .transactionType(request.getTransactionType())
@@ -685,7 +698,7 @@ public class TransactionService {
             updateTransactionLimit(transaction.getSenderAccountId(), totalAmount);
             
             // Send success notification ASYNCHRONOUSLY (non-critical)
-            sendTransactionNotification(transaction, "TransactionCompleted", true);
+            sendTransactionNotification(transaction, "TransactionCompleted", true,0);
             
             log.info("Internal transfer completed - TxID: {} - Sender new balance: {} - Receiver new balance: {}",
                     transaction.getTransactionId(), 
@@ -721,7 +734,7 @@ public class TransactionService {
             transaction.setFailureReason("Insufficient balance");
             transactionRepository.save(transaction);
             
-            sendTransactionNotification(transaction, "TransactionFailed", false);
+            sendTransactionNotification(transaction, "TransactionFailed", false,0);
             throw new RuntimeException("Insufficient balance in sender account", e);
 
         } catch (AccountServiceException e) {
@@ -732,7 +745,7 @@ public class TransactionService {
             transaction.setFailureReason("Account service error: " + e.getMessage());
             transactionRepository.save(transaction);
             
-            sendTransactionNotification(transaction, "TransactionFailed", false);
+            sendTransactionNotification(transaction, "TransactionFailed", false,0);
             throw new RuntimeException("Failed to process internal transfer: " + e.getMessage(), e);
 
         } catch (Exception e) {
@@ -743,7 +756,7 @@ public class TransactionService {
             transaction.setFailureReason("Unexpected error: " + e.getMessage());
             transactionRepository.save(transaction);
             
-            sendTransactionNotification(transaction, "TransactionFailed", false);
+            sendTransactionNotification(transaction, "TransactionFailed", false,0);
             throw new RuntimeException("Unexpected error during transfer", e);
         }
     }
@@ -834,7 +847,7 @@ public class TransactionService {
                 transaction.setStripeFailureCode(e.getCode());
                 transaction.setStripeFailureMessage(e.getMessage());
                 transactionRepository.save(transaction);
-                sendTransactionNotification(transaction, "TransactionFailed", false);
+                sendTransactionNotification(transaction, "TransactionFailed", false,1);
                 
                 throw new RuntimeException("Stripe transfer failed: " + e.getMessage(), e);
             }
@@ -843,7 +856,7 @@ public class TransactionService {
             updateTransactionLimit(transaction.getSenderAccountId(), totalAmount);
 
             // Send notification that transfer is being processed
-            sendTransactionNotification(transaction, "ExternalTransferInitiated", false);
+            sendTransactionNotification(transaction, "ExternalTransferInitiated", false,1);
             
             // Centralized Audit Log
             AuditEventDto auditEvent = AuditEventDto.builder()
@@ -874,7 +887,7 @@ public class TransactionService {
             transaction.setFailureReason("Insufficient balance");
             transactionRepository.save(transaction);
             
-            sendTransactionNotification(transaction, "TransactionFailed", false);
+            sendTransactionNotification(transaction, "TransactionFailed", false,1);
             throw new RuntimeException("Insufficient balance in sender account", e);
 
         } catch (Exception e) {
@@ -885,7 +898,7 @@ public class TransactionService {
             transaction.setCurrentStep(SagaStep.FAILED);
             transaction.setFailureReason("Unexpected error: " + e.getMessage());
             transactionRepository.save(transaction);
-            sendTransactionNotification(transaction, "TransactionFailed", false);
+            sendTransactionNotification(transaction, "TransactionFailed", false,1);
             
             throw new RuntimeException("External transfer failed: " + e.getMessage(), e);
         }
@@ -894,7 +907,7 @@ public class TransactionService {
     /**
      * Send transaction notification asynchronously (non-blocking)
      */
-    private void sendTransactionNotification(Transaction transaction, String eventType, boolean success) {
+    private void sendTransactionNotification(Transaction transaction, String eventType, boolean success, Integer notiWho) {
         try {
             // Use user IDs directly from transaction entity
             String safeSenderUserId = transaction.getSenderUserId() != null ? transaction.getSenderUserId() : "";
@@ -940,6 +953,7 @@ public class TransactionService {
                     .status(transaction.getStatus().toString())
                     .success(success)
                     .message(success ? "Transaction completed successfully" : "Transaction failed: " + transaction.getFailureReason())
+                    .notiWho(notiWho)
                     .build();
           
             notificationEventPublisher.publishMail(notificationEvent);
@@ -1038,7 +1052,7 @@ public class TransactionService {
         );
         sseService.pushUpdate(transaction.getTransactionId().toString(), sseUpdate);
         
-        sendTransactionNotification(transaction, "TransactionCompleted", true);
+        sendTransactionNotification(transaction, "TransactionCompleted", true,1);
 
         // Centralized Audit Log
         AuditEventDto auditEvent = AuditEventDto.builder()
@@ -1169,7 +1183,7 @@ public class TransactionService {
         );
         sseService.pushUpdate(transaction.getTransactionId().toString(), sseUpdate);
         
-        sendTransactionNotification(transaction, "TransactionFailed", false);
+        sendTransactionNotification(transaction, "TransactionFailed", false,1);
 
         // Centralized Audit Log
         AuditEventDto auditEvent = AuditEventDto.builder()
