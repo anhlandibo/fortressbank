@@ -72,9 +72,9 @@ public class TransactionService {
         //     log.warn("SePay transaction already processed - Ref: {}", webhookData.getCode());
         //     return;
         // }
-        String receiverUserId = accountServiceClient.getUserIdByAccountId(accountId);
+        String receiverUserId = accountServiceClient.getAccountByNumber(accountId).get("userId").toString();
         String correlationId = UUID.randomUUID().toString();
-        
+
         Transaction transaction = Transaction.builder()
                 .senderAccountId("SEPAY_GATEWAY") // Virtual sender
                 .receiverAccountId(accountId)
