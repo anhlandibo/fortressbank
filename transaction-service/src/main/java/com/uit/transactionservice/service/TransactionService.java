@@ -7,6 +7,7 @@ import com.uit.sharedkernel.outbox.repository.OutboxEventRepository;
 import com.uit.sharedkernel.constants.RabbitMQConstants;
 import com.uit.sharedkernel.exception.AppException;
 import com.uit.sharedkernel.exception.ErrorCode;
+import com.uit.sharedkernel.notification.NotificationEventPublisher;
 import com.uit.transactionservice.client.AccountServiceClient;
 import com.uit.transactionservice.client.dto.AccountBalanceResponse;
 import com.uit.transactionservice.client.dto.InternalTransferResponse;
@@ -32,6 +33,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.uit.sharedkernel.dto.*;
+import com.uit.transactionservice.dto.request.AdminDepositRequest;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -55,24 +58,41 @@ public class TransactionService {
     private final StripeTransferService stripeTransferService;
     private final TransactionSseService sseService;
     private final AuditEventPublisher auditEventPublisher;
+    private final NotificationEventPublisher notificationEventPublisher;
     
     /**
      * Handle SePay webhook for Top-up (Deposit)
      */
     @Transactional
-    public void handleSepayTopup(SepayWebhookDto webhookData, String accountId) {
+    public void handleSepayTopup(SepayWebhookDto webhookData, String accountNumber) {
         log.info("Processing SePay Top-up - AccountID: {} - Amount: {} - SePay Ref: {}", 
-                accountId, webhookData.getTransferAmount(), webhookData.getCode());
+                accountNumber, webhookData.getTransferAmount(), webhookData.getCode());
 
         // if (transactionRepository.existsByExternalTransactionId(webhookData.getCode())) {
         //     log.warn("SePay transaction already processed - Ref: {}", webhookData.getCode());
         //     return;
         // }
-
+       String receiverAccountId = null;
+       String receiverUserId = null;
+        try {
+            Map<String, Object> receiverAccount = accountServiceClient.getAccountByNumber(accountNumber);
+            if (receiverAccount != null) {
+                receiverAccountId = (String) receiverAccount.get("accountId");
+                receiverUserId = (String) receiverAccount.get("userId");
+            } else {
+                throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Account number not found: " + accountNumber    );
+            }
+        } catch (Exception e) {
+            log.error("Failed to resolve account number: {}", accountNumber, e);
+            throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Account validation failed");
+        }
         String correlationId = UUID.randomUUID().toString();
+
         Transaction transaction = Transaction.builder()
                 .senderAccountId("SEPAY_GATEWAY") // Virtual sender
-                .receiverAccountId(accountId)
+                .receiverAccountId(receiverAccountId)
+                .senderUserId(null)
+                .receiverUserId(receiverUserId)
                 .amount(webhookData.getTransferAmount())
                 .feeAmount(BigDecimal.ZERO)
                 .transactionType(TransactionType.DEPOSIT)
@@ -88,10 +108,10 @@ public class TransactionService {
         log.info("Created Deposit Transaction - TxID: {}", transaction.getTransactionId());
 
         try {
-            log.info("Crediting account {} with amount {}", accountId, webhookData.getTransferAmount());
+            log.info("Crediting account {} with amount {}", accountNumber, webhookData.getTransferAmount());
             
             accountServiceClient.creditAccount(
-                    accountId,
+                    receiverAccountId,
                     webhookData.getTransferAmount(),
                     transaction.getTransactionId().toString(),
                     "SePay Deposit: " + webhookData.getDescription()
@@ -101,7 +121,7 @@ public class TransactionService {
             auditEventPublisher.publishAuditEvent(AuditEventDto.builder()
                     .serviceName("account-service") // Route to AccountAuditLog
                     .entityType("Account")
-                    .entityId(accountId)
+                    .entityId(receiverAccountId)
                     .action("ACCOUNT_BALANCE_UPDATED_SEPAY")
                     .userId(null)
                     .newValues(Map.of(
@@ -120,7 +140,7 @@ public class TransactionService {
             
             log.info("SePay Deposit Completed Successfully - TxID: {}", transaction.getTransactionId());
             
-            sendTransactionNotification(transaction, "DepositCompleted", true);
+            sendTransactionNotification(transaction, "DepositCompleted", true,2);
 
             // Audit Log 2: Transaction Completed
             auditEventPublisher.publishAuditEvent(AuditEventDto.builder()
@@ -130,7 +150,7 @@ public class TransactionService {
                     .action("SEPAY_TRANSACTION_COMPLETED")
                     .userId(null)
                     .newValues(Map.of(
-                        "receiverAccountId", accountId,
+                        "receiverAccountId", receiverAccountId,
                         "amount", webhookData.getTransferAmount(),
                         "externalTransactionId", webhookData.getCode(),
                         "status", TransactionStatus.COMPLETED.toString()
@@ -147,7 +167,7 @@ public class TransactionService {
             transaction.setFailureReason("Failed to credit account: " + e.getMessage());
             transactionRepository.save(transaction);
             
-            sendTransactionNotification(transaction, "DepositFailed", false);
+            sendTransactionNotification(transaction, "DepositFailed", false,2);
             throw new RuntimeException("Failed to process SePay deposit", e);
         }
     }
@@ -158,15 +178,18 @@ public class TransactionService {
      * This creates a transaction record first, then credits the account.
      */
     @Transactional
-    public TransactionResponse createAdminDeposit(com.uit.transactionservice.dto.request.AdminDepositRequest request) {
+    public TransactionResponse createAdminDeposit(AdminDepositRequest request) {
         log.info("Processing Admin Deposit - Account: {} - Amount: {}", request.getAccountNumber(), request.getAmount());
 
         // 1. Resolve Account ID from Account Number
         String accountId = null;
+        String userId = null;
+  
         try {
             Map<String, Object> accountInfo = accountServiceClient.getAccountByNumber(request.getAccountNumber());
             if (accountInfo != null) {
                 accountId = (String) accountInfo.get("accountId");
+                userId = (String) accountInfo.get("userId");
             } else {
                 throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Account number not found: " + request.getAccountNumber());
             }
@@ -181,6 +204,7 @@ public class TransactionService {
                 .senderAccountId("ADMIN_DEPOSIT") // Virtual sender
                 .receiverAccountId(accountId)
                 .receiverAccountNumber(request.getAccountNumber())
+                .receiverUserId(userId)
                 .amount(request.getAmount())
                 .feeAmount(BigDecimal.ZERO)
                 .transactionType(TransactionType.DEPOSIT)
@@ -194,6 +218,7 @@ public class TransactionService {
         transaction = transactionRepository.save(transaction);
         log.info("Created Admin Deposit Transaction - TxID: {}", transaction.getTransactionId());
 
+        sendTransactionNotification(transaction, "DepositInitiated", true,2);
         // 3. Credit Account via Account Service
         try {
             accountServiceClient.creditAccount(
@@ -210,7 +235,7 @@ public class TransactionService {
             transactionRepository.save(transaction);
             
             // 5. Send Notification & Audit
-            sendTransactionNotification(transaction, "DepositCompleted", true);
+            sendTransactionNotification(transaction, "DepositCompleted", true,2);
 
             auditEventPublisher.publishAuditEvent(AuditEventDto.builder()
                     .serviceName("transaction-service")
@@ -332,8 +357,8 @@ public class TransactionService {
                 .senderAccountNumber(request.getSenderAccountNumber())
                 .senderUserId(senderUserId)
                 .receiverAccountNumber(request.getReceiverAccountNumber())
-                .receiverAccountId(receiverAccountId) // Null for external
-                .receiverUserId(receiverUserId)       // Null for external
+                .receiverAccountId(receiverAccountId) 
+                .receiverUserId(receiverUserId)       
                 .amount(request.getAmount())
                 .feeAmount(fee)
                 .transactionType(request.getTransactionType())
@@ -543,27 +568,36 @@ public class TransactionService {
      */
     private void sendOTPNotification(UUID transactionId, String phoneNumber, String otpCode) {
         try {
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("eventType", "OTPGenerated");
-            payload.put("transactionId", transactionId.toString());
-            payload.put("phoneNumber", phoneNumber);
-            payload.put("otpCode", otpCode);
-            payload.put("message", "Your OTP for transaction is: " + otpCode + ". Valid for 5 minutes.");
-            payload.put("timestamp", LocalDateTime.now().toString());
+            // Map<String, Object> payload = new HashMap<>();
+            // payload.put("eventType", "OTPGenerated");
+            // payload.put("transactionId", transactionId.toString());
+            // payload.put("phoneNumber", phoneNumber);
+            // payload.put("otpCode", otpCode);
+            // payload.put("message", "Your OTP for transaction is: " + otpCode + ". Valid for 5 minutes.");
+            // payload.put("timestamp", LocalDateTime.now().toString());
 
-            String payloadJson = objectMapper.writeValueAsString(payload);
+            // String payloadJson = objectMapper.writeValueAsString(payload);
 
-            OutboxEvent event = OutboxEvent.builder()
-                    .aggregateId(transactionId.toString())
-                    .aggregateType("Transaction")
-                    .eventType("OTPGenerated")
-                    .exchange(RabbitMQConstants.TRANSACTION_EXCHANGE)
-                    .routingKey("otp.generated")
-                    .payload(payloadJson)
-                    .status(OutboxEventStatus.PENDING)
+            // OutboxEvent event = OutboxEvent.builder()
+            //         .aggregateId(transactionId.toString())
+            //         .aggregateType("Transaction")
+            //         .eventType("OTPGenerated")
+            //         .exchange(RabbitMQConstants.TRANSACTION_EXCHANGE)
+            //         .routingKey("otp.generated")
+            //         .payload(payloadJson)
+            //         .status(OutboxEventStatus.PENDING)
+            //         .build();
+
+            // outboxEventRepository.save(event);
+           OtpEventDto  otpEvent = OtpEventDto.builder()
+                    .transactionId(transactionId.toString())
+                    .phoneNumber(phoneNumber)
+                    .otpCode(otpCode)
                     .build();
+                
+            // Publish OTP event directly
+            notificationEventPublisher.publishOtp(otpEvent);
 
-            outboxEventRepository.save(event);
             log.info("OTP notification event created for transaction: {}", transactionId);
 
         } catch (Exception e) {
@@ -664,7 +698,7 @@ public class TransactionService {
             updateTransactionLimit(transaction.getSenderAccountId(), totalAmount);
             
             // Send success notification ASYNCHRONOUSLY (non-critical)
-            sendTransactionNotification(transaction, "TransactionCompleted", true);
+            sendTransactionNotification(transaction, "TransactionCompleted", true,0);
             
             log.info("Internal transfer completed - TxID: {} - Sender new balance: {} - Receiver new balance: {}",
                     transaction.getTransactionId(), 
@@ -689,6 +723,7 @@ public class TransactionService {
                     .build();
             auditEventPublisher.publishAuditEvent(auditEvent);
 
+
             return transactionMapper.toResponse(transaction);
 
         } catch (InsufficientBalanceException e) {
@@ -699,7 +734,7 @@ public class TransactionService {
             transaction.setFailureReason("Insufficient balance");
             transactionRepository.save(transaction);
             
-            sendTransactionNotification(transaction, "TransactionFailed", false);
+            sendTransactionNotification(transaction, "TransactionFailed", false,0);
             throw new RuntimeException("Insufficient balance in sender account", e);
 
         } catch (AccountServiceException e) {
@@ -710,7 +745,7 @@ public class TransactionService {
             transaction.setFailureReason("Account service error: " + e.getMessage());
             transactionRepository.save(transaction);
             
-            sendTransactionNotification(transaction, "TransactionFailed", false);
+            sendTransactionNotification(transaction, "TransactionFailed", false,0);
             throw new RuntimeException("Failed to process internal transfer: " + e.getMessage(), e);
 
         } catch (Exception e) {
@@ -721,7 +756,7 @@ public class TransactionService {
             transaction.setFailureReason("Unexpected error: " + e.getMessage());
             transactionRepository.save(transaction);
             
-            sendTransactionNotification(transaction, "TransactionFailed", false);
+            sendTransactionNotification(transaction, "TransactionFailed", false,0);
             throw new RuntimeException("Unexpected error during transfer", e);
         }
     }
@@ -748,6 +783,9 @@ public class TransactionService {
             
             transaction.setCurrentStep(SagaStep.DEBIT_COMPLETED);
             transaction = transactionRepository.save(transaction);
+
+
+
             log.info("Debit completed - New sender balance: {}", debitResponse.getNewBalance());
 
             // Step 2: Call Stripe Transfer API (sync with Resilience4j retry)
@@ -809,7 +847,7 @@ public class TransactionService {
                 transaction.setStripeFailureCode(e.getCode());
                 transaction.setStripeFailureMessage(e.getMessage());
                 transactionRepository.save(transaction);
-                sendTransactionNotification(transaction, "TransactionFailed", false);
+                sendTransactionNotification(transaction, "TransactionFailed", false,1);
                 
                 throw new RuntimeException("Stripe transfer failed: " + e.getMessage(), e);
             }
@@ -818,7 +856,7 @@ public class TransactionService {
             updateTransactionLimit(transaction.getSenderAccountId(), totalAmount);
 
             // Send notification that transfer is being processed
-            sendTransactionNotification(transaction, "ExternalTransferInitiated", false);
+            sendTransactionNotification(transaction, "ExternalTransferInitiated", false,1);
             
             // Centralized Audit Log
             AuditEventDto auditEvent = AuditEventDto.builder()
@@ -849,7 +887,7 @@ public class TransactionService {
             transaction.setFailureReason("Insufficient balance");
             transactionRepository.save(transaction);
             
-            sendTransactionNotification(transaction, "TransactionFailed", false);
+            sendTransactionNotification(transaction, "TransactionFailed", false,1);
             throw new RuntimeException("Insufficient balance in sender account", e);
 
         } catch (Exception e) {
@@ -860,7 +898,7 @@ public class TransactionService {
             transaction.setCurrentStep(SagaStep.FAILED);
             transaction.setFailureReason("Unexpected error: " + e.getMessage());
             transactionRepository.save(transaction);
-            sendTransactionNotification(transaction, "TransactionFailed", false);
+            sendTransactionNotification(transaction, "TransactionFailed", false,1);
             
             throw new RuntimeException("External transfer failed: " + e.getMessage(), e);
         }
@@ -869,7 +907,7 @@ public class TransactionService {
     /**
      * Send transaction notification asynchronously (non-blocking)
      */
-    private void sendTransactionNotification(Transaction transaction, String eventType, boolean success) {
+    private void sendTransactionNotification(Transaction transaction, String eventType, boolean success, Integer notiWho) {
         try {
             // Use user IDs directly from transaction entity
             String safeSenderUserId = transaction.getSenderUserId() != null ? transaction.getSenderUserId() : "";
@@ -878,31 +916,48 @@ public class TransactionService {
             // Log for debugging (optional)
             log.debug("Notification - SenderUser: {}, ReceiverUser: {}", safeSenderUserId, safeReceiverUserId);
 
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("senderUserId", safeSenderUserId);
-            payload.put("receiverUserId", safeReceiverUserId);
-            payload.put("transactionId", transaction.getTransactionId().toString());
-            payload.put("senderAccountId", transaction.getSenderAccountId());
-            payload.put("receiverAccountId", transaction.getReceiverAccountId());
-            payload.put("amount", transaction.getAmount());
-            payload.put("status", transaction.getStatus().toString());
-            payload.put("success", success);
-            payload.put("message", success ? "Transaction completed successfully" : "Transaction failed: " + transaction.getFailureReason());
-            payload.put("timestamp", LocalDateTime.now().toString());
+            // Map<String, Object> payload = new HashMap<>();
+            // payload.put("senderUserId", safeSenderUserId);
+            // payload.put("receiverUserId", safeReceiverUserId);
+            // payload.put("transactionId", transaction.getTransactionId().toString());
+            // payload.put("senderAccountId", transaction.getSenderAccountId());
+            // payload.put("receiverAccountId", transaction.getReceiverAccountId());
+            // payload.put("amount", transaction.getAmount());
+            // payload.put("status", transaction.getStatus().toString());
+            // payload.put("success", success);
+            // payload.put("message", success ? "Transaction completed successfully" : "Transaction failed: " + transaction.getFailureReason());
+            // payload.put("timestamp", LocalDateTime.now().toString());
 
-            String payloadJson = objectMapper.writeValueAsString(payload);
+            // String payloadJson = objectMapper.writeValueAsString(payload);
 
-            OutboxEvent event = OutboxEvent.builder()
-                    .aggregateId(transaction.getTransactionId().toString())
-                    .aggregateType("Transaction")
-                    .eventType(eventType)
-                    .exchange(RabbitMQConstants.TRANSACTION_EXCHANGE)
-                    .routingKey("notification." + eventType)
-                    .payload(payloadJson)
-                    .status(OutboxEventStatus.PENDING)
+            // OutboxEvent event = OutboxEvent.builder()
+            //         .aggregateId(transaction.getTransactionId().toString())
+            //         .aggregateType("Transaction")
+            //         .eventType(eventType)
+            //         .exchange(RabbitMQConstants.TRANSACTION_EXCHANGE)
+            //         .routingKey("notification." + eventType)
+            //         .payload(payloadJson)
+            //         .status(OutboxEventStatus.PENDING)
+            //         .build();
+
+            // outboxEventRepository.save(event);
+            // mapper payload to NotificationEventDto
+            if (eventType=="ExternalTransferInitiated") {
+                safeReceiverUserId=null;
+            }
+            NotificationEventDto  notificationEvent = NotificationEventDto.builder()
+                    .transactionId(transaction.getTransactionId().toString())
+                    .senderUserId(safeSenderUserId)
+                    .receiverUserId(safeReceiverUserId)
+                    .amount(transaction.getAmount())
+                    .status(transaction.getStatus().toString())
+                    .success(success)
+                    .message(success ? "Transaction completed successfully" : "Transaction failed: " + transaction.getFailureReason())
+                    .notiWho(notiWho)
                     .build();
+          
+            notificationEventPublisher.publishMail(notificationEvent);
 
-            outboxEventRepository.save(event);
             log.info("Notification event {} created for transaction: {}", eventType, transaction.getTransactionId());
 
         } catch (Exception e) {
@@ -997,7 +1052,7 @@ public class TransactionService {
         );
         sseService.pushUpdate(transaction.getTransactionId().toString(), sseUpdate);
         
-        sendTransactionNotification(transaction, "TransactionCompleted", true);
+        sendTransactionNotification(transaction, "TransactionCompleted", true,1);
 
         // Centralized Audit Log
         AuditEventDto auditEvent = AuditEventDto.builder()
@@ -1128,7 +1183,7 @@ public class TransactionService {
         );
         sseService.pushUpdate(transaction.getTransactionId().toString(), sseUpdate);
         
-        sendTransactionNotification(transaction, "TransactionFailed", false);
+        sendTransactionNotification(transaction, "TransactionFailed", false,1);
 
         // Centralized Audit Log
         AuditEventDto auditEvent = AuditEventDto.builder()

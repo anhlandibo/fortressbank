@@ -53,6 +53,7 @@ public class TransactionController {
             
             if (userInfo != null) {
                 userId = (String) userInfo.get("sub");
+                phoneNumber= (String) userInfo.get("phoneNumber");
                 log.info("User ID from token: {}", userId);
             } else {
                 log.warn("No JWT token found, using default test user");

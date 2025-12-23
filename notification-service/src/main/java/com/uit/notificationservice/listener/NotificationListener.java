@@ -67,6 +67,7 @@ public class NotificationListener {
             String senderAccountId = (String) message.get("senderAccountId");
             String receiverUserId = (String) message.get("receiverUserId");
             String receiverAccountId = (String) message.get("receiverAccountId");
+            Integer notiWho = (Integer) message.get("notiWho"); // False: receiver, true: sender
             Object amountObj = message.get("amount");
             String status = (String) message.get("status");
             boolean success = Boolean.TRUE.equals(message.get("success")); // Safe unboxing
@@ -84,7 +85,7 @@ public class NotificationListener {
 
             // ========== SENDER NOTIFICATION (Money Deducted) ==========
             log.info("Processing sender notification for user: {} (account: {})", senderUserId, senderAccountId);
-            if (senderUserId != null) {
+            if (notiWho == 0 || notiWho == 1) {
                 UserPreference senderPreference = userPreferenceRepo.findById(senderUserId)
                         .orElseGet(() -> {
                             log.warn("User preference not found for sender user: {}, using defaults", senderUserId);
@@ -105,7 +106,7 @@ public class NotificationListener {
 
             // ========== RECEIVER NOTIFICATION (Money Received) ==========
             // Only send to receiver if transaction is successful
-            if (success && receiverUserId != null) {
+            if (success && notiWho == 0 || notiWho == 2) {
                 log.info("Processing receiver notification for user: {} (account: {})", receiverUserId, receiverAccountId);
 
                 UserPreference receiverPreference = userPreferenceRepo.findById(receiverUserId)

@@ -10,7 +10,7 @@ public class RabbitMQConstants {
     public static final String MONEY_TRANSFERRED = "money.transferred";
     public static final String AUDIT_LOG = "audit.log";
     public static final String OTP_ROUTING_KEY = "otp.generated";
-    public static final String NOTIFICATION_EVENT_KEY = "notification.event";
+    public static final String TRANSACTION_SUCCESS = "transaction.success";
     
     // Queues
     public static final String TRANSACTION_QUEUE = "transaction-queue";
