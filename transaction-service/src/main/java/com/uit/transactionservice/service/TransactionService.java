@@ -272,14 +272,12 @@ public class TransactionService {
         String senderUserId = null;
 
         // 1. Validate Sender Account Exists (Always)
-        // We use getAccountByNumber to verify sender and get userId
         try {
             Map<String, Object> senderInfo = accountServiceClient.getAccountByNumber(request.getSenderAccountNumber());
             if (senderInfo == null) {
                  throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Sender account not found: " + request.getSenderAccountNumber());
             }
 
-            // Extract userId from sender account info
             Object senderUserIdObj = senderInfo.get("userId");
             if (senderUserIdObj != null) {
                 senderUserId = senderUserIdObj.toString();
@@ -289,7 +287,6 @@ public class TransactionService {
                 log.warn("Sender account has no userId: {}", request.getSenderAccountNumber());
             }
         } catch (Exception e) {
-             // If service call fails
              log.error("Failed to validate sender account: {}", e.getMessage());
              throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "Sender account validation failed");
         }
@@ -322,7 +319,6 @@ public class TransactionService {
         
         } else if (request.getTransactionType() == TransactionType.EXTERNAL_TRANSFER) {
             // EXTERNAL: Validate via Stripe, do NOT check local Account Service
-            // Receiver Account ID/User ID will be NULL in our DB
             log.info("Validating EXTERNAL receiver via Stripe - Account: {}", receiverAccountNumber);
             try {
                 boolean isValidInStripe = stripeTransferService.validateConnectedAccount(receiverAccountNumber);
@@ -331,11 +327,6 @@ public class TransactionService {
                     throw new AppException(ErrorCode.ACCOUNT_NOT_FOUND, "External receiver account invalid");
                 }
                 log.info("Receiver account validated in Stripe");
-                
-                // For external, we might store the external ID in receiverAccountId or keep it null 
-                // and just use receiverAccountNumber. Keeping it null to distinguish.
-                // Or we can store the stripe ID in receiverAccountId if we want.
-                // Let's keep receiverAccountId null as per requirement "lưu vào transaction sẽ chỉ có receiveraccountnumber thôi"
                 
             } catch (com.stripe.exception.StripeException e) {
                 log.error("Failed to validate receiver account with Stripe: {}", e.getMessage());
