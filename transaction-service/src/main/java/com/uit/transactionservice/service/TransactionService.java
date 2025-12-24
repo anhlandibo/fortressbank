@@ -89,8 +89,8 @@ public class TransactionService {
         String correlationId = UUID.randomUUID().toString();
 
         Transaction transaction = Transaction.builder()
-                .senderAccountId("SEPAY_GATEWAY") // Virtual sender
-                .receiverAccountId(receiverAccountId)
+                .senderAccountNumber("SEPAY_GATEWAY") // Virtual sender
+                .receiverAccountNumber(accountNumber)
                 .senderUserId(null)
                 .receiverUserId(receiverUserId)
                 .amount(webhookData.getTransferAmount())
@@ -201,10 +201,11 @@ public class TransactionService {
         // 2. Create Transaction Record (DEPOSIT)
         String correlationId = UUID.randomUUID().toString();
         Transaction transaction = Transaction.builder()
-                .senderAccountId("ADMIN_DEPOSIT") // Virtual sender
+                .senderAccountNumber("ADMIN_DEPOSIT") // Virtual sender
                 .receiverAccountId(accountId)
                 .receiverAccountNumber(request.getAccountNumber())
                 .receiverUserId(userId)
+                .senderUserId(null)
                 .amount(request.getAmount())
                 .feeAmount(BigDecimal.ZERO)
                 .transactionType(TransactionType.DEPOSIT)
@@ -940,6 +941,8 @@ public class TransactionService {
                     .transactionId(transaction.getTransactionId().toString())
                     .senderUserId(safeSenderUserId)
                     .receiverUserId(safeReceiverUserId)
+                    .senderAccountNumber(transaction.getSenderAccountNumber())
+                    .receiverAccountNumber(transaction.getReceiverAccountNumber())
                     .amount(transaction.getAmount())
                     .status(transaction.getStatus().toString())
                     .success(success)

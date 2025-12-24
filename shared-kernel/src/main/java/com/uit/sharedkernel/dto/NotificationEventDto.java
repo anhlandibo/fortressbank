@@ -15,9 +15,9 @@ import java.math.BigDecimal;
 public class NotificationEventDto implements Serializable {
     private String transactionId;
     private String senderUserId;
-    private String senderAccountId;
+    private String senderAccountNumber;
     private String receiverUserId;
-    private String receiverAccountId;
+    private String receiverAccountNumber;
     private BigDecimal amount;
     private String status;
     private boolean success;
