@@ -117,6 +117,25 @@ public class AccountService {
         log.info("Debit successful - Account: {} - Old balance: {} - New balance: {} - TxID: {}", 
                 accountId, oldBalance, newBalance, request.getTransactionId());
 
+        // Centralized Audit Log
+        try {
+            AuditEventDto auditEvent = AuditEventDto.builder()
+                    .serviceName("account-service")
+                    .entityType("Account")
+                    .entityId(accountId)
+                    .action("ACCOUNT_DEBIT")
+                    .userId(account.getUserId())
+                    .oldValues(Map.of("balance", oldBalance.toString()))
+                    .newValues(Map.of("balance", newBalance.toString()))
+                    .changes("Account debited by " + request.getAmount())
+                    .metadata(Map.of("transactionId", request.getTransactionId()))
+                    .result("SUCCESS")
+                    .build();
+            auditEventPublisher.publishAuditEvent(auditEvent);
+        } catch (Exception e) {
+            log.error("Failed to publish audit event for debit: {}", e.getMessage());
+        }
+
         return com.uit.accountservice.dto.response.AccountBalanceResponse.builder()
                 .accountId(accountId)
                 .oldBalance(oldBalance)
@@ -154,6 +173,25 @@ public class AccountService {
 
         log.info("Credit successful - Account: {} - Old balance: {} - New balance: {} - TxID: {}", 
                 accountId, oldBalance, newBalance, request.getTransactionId());
+
+        // Centralized Audit Log
+        try {
+            AuditEventDto auditEvent = AuditEventDto.builder()
+                    .serviceName("account-service")
+                    .entityType("Account")
+                    .entityId(accountId)
+                    .action("ACCOUNT_CREDIT")
+                    .userId(account.getUserId())
+                    .oldValues(Map.of("balance", oldBalance.toString()))
+                    .newValues(Map.of("balance", newBalance.toString()))
+                    .changes("Account credited by " + request.getAmount())
+                    .metadata(Map.of("transactionId", request.getTransactionId()))
+                    .result("SUCCESS")
+                    .build();
+            auditEventPublisher.publishAuditEvent(auditEvent);
+        } catch (Exception e) {
+            log.error("Failed to publish audit event for credit: {}", e.getMessage());
+        }
 
         return com.uit.accountservice.dto.response.AccountBalanceResponse.builder()
                 .accountId(accountId)
@@ -224,6 +262,46 @@ public class AccountService {
                 request.getTransactionId(),
                 request.getSenderAccountId(), fromOldBalance, fromAccount.getBalance(),
                 request.getReceiverAccountId(), toOldBalance, toAccount.getBalance());
+
+        // Centralized Audit Log (Sender)
+        try {
+            AuditEventDto senderAudit = AuditEventDto.builder()
+                    .serviceName("account-service")
+                    .entityType("Account")
+                    .entityId(request.getSenderAccountId())
+                    .action("INTERNAL_TRANSFER_SENT")
+                    .userId(fromAccount.getUserId())
+                    .oldValues(Map.of("balance", fromOldBalance.toString()))
+                    .newValues(Map.of("balance", fromAccount.getBalance().toString()))
+                    .changes("Transferred " + request.getAmount() + " to " + request.getReceiverAccountId())
+                    .metadata(Map.of(
+                        "transactionId", request.getTransactionId(),
+                        "receiverAccountId", request.getReceiverAccountId()
+                    ))
+                    .result("SUCCESS")
+                    .build();
+            auditEventPublisher.publishAuditEvent(senderAudit);
+
+            // Centralized Audit Log (Receiver)
+            AuditEventDto receiverAudit = AuditEventDto.builder()
+                    .serviceName("account-service")
+                    .entityType("Account")
+                    .entityId(request.getReceiverAccountId())
+                    .action("INTERNAL_TRANSFER_RECEIVED")
+                    .userId(toAccount.getUserId())
+                    .oldValues(Map.of("balance", toOldBalance.toString()))
+                    .newValues(Map.of("balance", toAccount.getBalance().toString()))
+                    .changes("Received " + request.getAmount() + " from " + request.getSenderAccountId())
+                    .metadata(Map.of(
+                        "transactionId", request.getTransactionId(),
+                        "senderAccountId", request.getSenderAccountId()
+                    ))
+                    .result("SUCCESS")
+                    .build();
+            auditEventPublisher.publishAuditEvent(receiverAudit);
+        } catch (Exception e) {
+            log.error("Failed to publish audit event for internal transfer: {}", e.getMessage());
+        }
 
         return com.uit.accountservice.dto.response.InternalTransferResponse.builder()
                 .transactionId(request.getTransactionId())
